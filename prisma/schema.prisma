@@ -8,11 +8,20 @@ datasource db {
   provider = "postgresql"
 }
 
+enum AccountStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id            String         @id @default(uuid()) @db.Uuid
   email         String         @unique @db.VarChar(320)
   passwordHash  String
   isActive      Boolean        @default(true)
+  accountStatus AccountStatus  @default(PENDING)
+  reviewedAt    DateTime?
+  reviewedById  String?        @db.Uuid
   authorizationVersion Int      @default(1)
   emailVerifiedAt DateTime?
   emailVerificationTokenHash String?
@@ -23,6 +32,8 @@ model User {
   updatedAt     DateTime       @updatedAt
   roles         UserRole[]
   refreshTokens RefreshToken[]
+
+  @@index([accountStatus, createdAt])
 }
 
 model Role {

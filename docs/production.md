@@ -45,6 +45,7 @@ Edite `.env.production` e substitua todos os valores `replace-*`. Configure prin
 - `POSTGRES_USER`, `POSTGRES_PASSWORD` e `REDIS_PASSWORD`;
 - configurações `MAIL_*` do provedor real;
 - senha inicial do administrador e senha do Grafana.
+- retenção de auditoria (`AUDIT_RETENTION_*`); no primeiro deploy mantenha `AUDIT_RETENTION_DRY_RUN=true`.
 
 Use valores aleatórios longos. Como as credenciais são incorporadas em URLs internas, senhas com caracteres reservados de URL, como `@`, `:`, `/`, `?` e `#`, devem ser codificadas ou evitadas.
 
@@ -71,6 +72,8 @@ docker compose \
 ```
 
 Antes de iniciar a API, o container executa automaticamente `prisma migrate deploy`. Portanto, migrations versionadas são aplicadas no primeiro deploy e nas atualizações.
+
+Na primeira execução da retenção, procure por `Audit retention dry run completed` nos logs da API e confira `candidates`. Depois do backup e da validação do prazo, altere `AUDIT_RETENTION_DRY_RUN=false` e recrie o container da API.
 
 ### 4. Crie roles e administrador
 
@@ -137,7 +140,8 @@ docker compose --env-file .env.production -f docker-compose.production.yml down
 
 Não use `down -v` em produção: essa opção remove os volumes de PostgreSQL, Redis, Grafana, Loki, Tempo e Prometheus.
 
+Os logs locais dos containers giram em cinco arquivos de até 20 MB por container. O Loki mantém 30 dias no volume `loki_data`; o PostgreSQL mantém 365 dias de `AuditLog` por padrão. Antes de reduzir qualquer prazo, faça backup e valide requisitos comerciais e de privacidade.
+
 ## Por que `TRUST_PROXY=true`
 
 Caddy encaminha o IP real no header `X-Forwarded-For`. A API confia em exatamente um proxy, permitindo que rate limit e auditoria continuem registrando o IP do cliente, e não o IP interno do Caddy. Em desenvolvimento, `TRUST_PROXY=false`.
-

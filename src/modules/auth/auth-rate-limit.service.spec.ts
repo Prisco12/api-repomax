@@ -63,7 +63,9 @@ describe('AuthRateLimitService', () => {
     await service.reserveRegistration('127.0.0.1');
     await service.reserveRegistration('127.0.0.1');
 
-    await expect(service.reserveRegistration('127.0.0.1')).rejects.toMatchObject({
+    await expect(
+      service.reserveRegistration('127.0.0.1'),
+    ).rejects.toMatchObject({
       status: HttpStatus.TOO_MANY_REQUESTS,
     });
   });

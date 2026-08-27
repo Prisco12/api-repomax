@@ -22,8 +22,11 @@ Prefixo: `/api/v1`. Respostas de sucesso usam `success`, `data` e `meta`.
 ## Administrativos
 
 - `GET /users` (`users:read`)
+- `GET /users/approvals`, `PUT /users/:id/approval` (`users:approve`)
 - `GET /audit-logs` (`audit:read`)
-- `GET /rbac/permissions`, `GET /rbac/roles`, `POST /rbac/roles`, `PUT /rbac/roles/:name/permissions`, `PUT /rbac/users/:userId/roles` (`roles:manage`)
+- `GET /rbac/roles` (`roles:manage` ou `roles:assign`)
+- `GET /rbac/permissions`, `POST /rbac/roles`, `PUT /rbac/roles/:name/permissions` (`roles:manage`)
+- `PUT /rbac/users/:userId/roles` (`roles:assign`)
 
 Importe a coleção em `postman/api-postgres.postman_collection.json` para exemplos de payloads.
 
@@ -39,7 +42,8 @@ Importe a coleção em `postman/api-postgres.postman_collection.json` para exemp
 
 No fluxo de conta:
 
-- `register` responde `201` e envia a confirmação; login antes da confirmação responde `403`;
+- `register` responde `201`, envia a confirmação e cria a conta como `PENDING`;
+- login exige e-mail confirmado e conta `APPROVED`; enquanto aguarda aprovação retorna `ACCOUNT_APPROVAL_PENDING`;
 - `verify-email` responde `204`; reutilizar o mesmo token responde `400`;
 - `forgot-password` sempre responde `204`, inclusive para e-mail inexistente;
 - `reset-password` responde `204`, consome o token e revoga todas as sessões anteriores;
@@ -53,6 +57,18 @@ No Postman, as requisições `Capture ... token from Mailpit` consultam `{{mailp
 ```json
 { "permissions": ["users:read"] }
 ```
+
+`PUT /users/:id/approval`:
+
+```json
+{ "status": "APPROVED" }
+```
+
+O payload também aceita `REJECTED`. A decisão incrementa a versão de autorização, revoga sessões do usuário e gera `USER_APPROVAL_UPDATED` na auditoria.
+
+`GET /users/approvals` aceita `status=PENDING`, `APPROVED` ou `REJECTED`; sem o parâmetro, lista todos. Uma conta rejeitada pode ser reconsiderada enviando `APPROVED`, e uma aprovação pode ser revogada enviando `REJECTED`.
+
+Contas com o papel `admin` nunca participam do fluxo de aprovação. Em `GET /users`, elas são omitidas para operadores comuns e visíveis, com seus papéis, somente para outro administrador.
 
 Erros seguem `{ "success": false, "error": { "code", "message" }, "meta": { "requestId", "timestamp", "path" } }`. Os principais códigos são `VALIDATION_ERROR`/`BAD_REQUEST` (payload inválido), `UNAUTHORIZED` (token ausente, expirado ou desatualizado), `FORBIDDEN` (permissão ausente), `NOT_FOUND` e `CONFLICT`.
 
@@ -92,4 +108,14 @@ O frontend deve usar `field` para destacar o input, `code` para tradução/regra
 
 `ação RBAC → AuditLog com executor, recurso e resultado`.
 
-`cadastro → e-mail no Mailpit → confirmação → login → refresh rotacionado → recuperação de senha → sessões anteriores revogadas`.
+`cadastro pendente → confirmação de e-mail → aprovação por users:approve → login → refresh rotacionado`.
+
+`roles:assign → lista papéis atribuíveis e altera papéis de usuários`.
+
+`roles:manage → cria papéis e configura suas permissões`.
+
+`GET /rbac/roles → com roles:manage retorna também permissions; somente com roles:assign retorna nome e descrição`.
+
+`roles:assign/roles:manage sem papel admin → papel admin omitido da listagem e atribuição/remoção bloqueada`.
+
+`último administrador → remoção do papel admin bloqueada para impedir que o sistema fique sem administração`.

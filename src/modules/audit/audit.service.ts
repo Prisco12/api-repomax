@@ -27,7 +27,13 @@ export class AuditService {
 
   async list(page: number, limit: number, filters: ListAuditLogsDto) {
     const where: Record<string, unknown> = {};
-    for (const key of ['actorId', 'action', 'resource', 'resourceId', 'status'] as const) {
+    for (const key of [
+      'actorId',
+      'action',
+      'resource',
+      'resourceId',
+      'status',
+    ] as const) {
       if (filters[key]) where[key] = filters[key];
     }
     if (filters.from || filters.to) {

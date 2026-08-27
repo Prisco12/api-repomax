@@ -15,6 +15,7 @@ export class EmailService {
       auth: user && password ? { user, pass: password } : undefined,
     });
   }
+
   sendVerification(to: string, token: string) {
     return this.sendAccountEmail({
       to,
@@ -27,6 +28,7 @@ export class EmailService {
       token,
     });
   }
+
   sendPasswordReset(to: string, token: string) {
     return this.sendAccountEmail({
       to,

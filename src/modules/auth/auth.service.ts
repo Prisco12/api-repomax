@@ -59,7 +59,13 @@ export class AuthService {
       ...context,
     });
     await this.sendEmailVerification(user.id, user.email);
-    return { id: user.id, email: user.email, emailVerificationRequired: true };
+    return {
+      id: user.id,
+      email: user.email,
+      emailVerificationRequired: true,
+      approvalRequired: true,
+      accountStatus: 'PENDING',
+    };
   }
 
   async login(input: LoginDto, context: AuditContext) {
@@ -84,6 +90,16 @@ export class AuthService {
     }
     if (!user.emailVerifiedAt)
       throw new ForbiddenException('Email verification required');
+    if (user.accountStatus === 'PENDING')
+      throw new ForbiddenException({
+        code: 'ACCOUNT_APPROVAL_PENDING',
+        message: 'Account approval pending',
+      });
+    if (user.accountStatus === 'REJECTED')
+      throw new ForbiddenException({
+        code: 'ACCOUNT_REJECTED',
+        message: 'Account registration rejected',
+      });
     await this.rateLimit.clearLoginFailures(email, ip);
     await this.deleteExpiredTokensForUser(user.id);
     const tokens = await this.issueTokens(this.toAuthenticatedUser(user));
@@ -122,6 +138,8 @@ export class AuthService {
       !stored ||
       stored.revokedAt ||
       stored.expiresAt <= new Date() ||
+      !stored.user.isActive ||
+      stored.user.accountStatus !== 'APPROVED' ||
       !stored.user.emailVerifiedAt ||
       !(await argon2.verify(stored.tokenHash, secret))
     )

@@ -101,6 +101,26 @@ describe('AuthService', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it('recusa login enquanto o cadastro aguarda aprovação', async () => {
+    users.findByEmailForAuth.mockResolvedValue({
+      id: 'user-id',
+      email: 'user@example.com',
+      isActive: true,
+      accountStatus: 'PENDING',
+      emailVerifiedAt: new Date(),
+      passwordHash: await argon2.hash('SenhaSegura123!'),
+    });
+
+    await expect(
+      service.login(
+        { email: 'user@example.com', password: 'SenhaSegura123!' },
+        { ip: '127.0.0.1' },
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'ACCOUNT_APPROVAL_PENDING' }),
+    });
+  });
+
   it('confirma e-mail com token válido', async () => {
     const secret = 'valid-secret-with-at-least-twenty-characters';
     users.findAccountTokenUser.mockResolvedValue({

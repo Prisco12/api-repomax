@@ -10,6 +10,8 @@
     { "key": "mailpitUrl", "value": "http://localhost:8025" },
     { "key": "accessToken", "value": "" },
     { "key": "userId", "value": "" },
+    { "key": "approvalUserId", "value": "" },
+    { "key": "approvalStatus", "value": "APPROVED" },
     { "key": "userEmail", "value": "new.user@example.com" },
     { "key": "userPassword", "value": "ChangeMe123!" },
     { "key": "adminEmail", "value": "admin@example.com" },
@@ -94,7 +96,10 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{verificationToken}}\"\n}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{verificationToken}}\"\n}"
+            },
             "url": "{{baseUrl}}/auth/verify-email"
           }
         },
@@ -103,7 +108,10 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{userEmail}}\"\n}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\"\n}"
+            },
             "url": "{{baseUrl}}/auth/resend-verification"
           }
         },
@@ -112,7 +120,10 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{userEmail}}\"\n}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\"\n}"
+            },
             "url": "{{baseUrl}}/auth/forgot-password"
           }
         },
@@ -156,7 +167,10 @@
             "description": "A nova senha usa a mesma política do cadastro: 12 a 128 caracteres, minúscula, maiúscula, número e símbolo.",
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{passwordResetToken}}\",\n  \"password\": \"NovaSenha123!\"\n}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{passwordResetToken}}\",\n  \"password\": \"NovaSenha123!\"\n}"
+            },
             "url": "{{baseUrl}}/auth/reset-password"
           }
         },
@@ -253,6 +267,45 @@
             ],
             "url": "{{baseUrl}}/users?page=1&limit=20"
           }
+        },
+        {
+          "name": "List users by approval status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.[0]?.id) pm.collectionVariables.set('approvalUserId', body.data[0].id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "description": "Exige users:approve. Troque status entre PENDING, APPROVED e REJECTED; remova o parâmetro para listar todos. Contas admin nunca são retornadas.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/users/approvals?page=1&limit=20&status=PENDING"
+          }
+        },
+        {
+          "name": "Review user approval",
+          "request": {
+            "description": "Exige users:approve. approvalStatus aceita APPROVED ou REJECTED e permite reconsiderar decisões anteriores. Contas admin são protegidas contra essa operação.",
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"{{approvalStatus}}\"\n}"
+            },
+            "url": "{{baseUrl}}/users/{{approvalUserId}}/approval"
+          }
         }
       ]
     },
@@ -272,6 +325,7 @@
         {
           "name": "List roles",
           "request": {
+            "description": "Exige roles:manage ou roles:assign. O campo permissions só é retornado para quem possui roles:manage; o papel admin só aparece para administradores.",
             "method": "GET",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" }
@@ -312,6 +366,7 @@
         {
           "name": "Set user roles",
           "request": {
+            "description": "Exige roles:assign. Apenas administradores podem atribuir ou remover o papel admin.",
             "method": "PUT",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" },

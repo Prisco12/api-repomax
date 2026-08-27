@@ -32,6 +32,7 @@ async function main() {
         email,
         passwordHash: await argon2.hash(password),
         emailVerifiedAt: new Date(),
+        accountStatus: 'APPROVED',
       },
     });
     await prisma.userRole.create({
@@ -66,6 +67,14 @@ async function main() {
       data: { emailVerifiedAt: new Date() },
     });
     console.log(`Administrator email marked as verified for ${email}`);
+  }
+
+  if (user.accountStatus !== 'APPROVED') {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { accountStatus: 'APPROVED', reviewedAt: new Date() },
+    });
+    console.log(`Administrator account approved for ${email}`);
   }
 
   await prisma.$disconnect();

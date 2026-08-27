@@ -1,4 +1,8 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { RbacService } from './rbac.service';
 import { mockDependency } from '../../../test/support/mock-dependency';
 
@@ -8,6 +12,8 @@ describe('RbacService', () => {
     role: { create: jest.fn(), findMany: jest.fn(), findUnique: jest.fn() },
     permission: { findMany: jest.fn() },
     rolePermission: { deleteMany: jest.fn(), createMany: jest.fn() },
+    userRole: { findFirst: jest.fn() },
+    user: { count: jest.fn() },
   };
   const users = {
     incrementAuthorizationVersionByRoleId: jest.fn(),
@@ -20,6 +26,7 @@ describe('RbacService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     audit.record.mockResolvedValue(undefined);
+    prisma.userRole.findFirst.mockResolvedValue({ userId: 'admin-id' });
     prisma.$transaction.mockImplementation((operations: Promise<unknown>[]) =>
       Promise.all(operations),
     );
@@ -39,7 +46,10 @@ describe('RbacService', () => {
   });
 
   it('registra before e after ao criar uma role', async () => {
-    prisma.role.create.mockResolvedValue({ name: 'manager', description: null });
+    prisma.role.create.mockResolvedValue({
+      name: 'manager',
+      description: null,
+    });
 
     await service.createRole('manager', undefined, 'admin-id');
 
@@ -93,5 +103,57 @@ describe('RbacService', () => {
         after: { userId: 'user-id', roles: ['user'] },
       }),
     );
+  });
+
+  it('impede não administrador de atribuir o papel admin', async () => {
+    prisma.userRole.findFirst.mockResolvedValue(null);
+    users.rolesForAudit.mockResolvedValue({
+      userId: 'user-id',
+      roles: ['user'],
+    });
+
+    await expect(
+      service.setUserRoles('user-id', ['admin'], 'manager-id'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(users.replaceRoles).not.toHaveBeenCalled();
+  });
+
+  it('oculta o papel admin da listagem para não administradores', async () => {
+    prisma.userRole.findFirst.mockResolvedValue(null);
+    prisma.role.findMany.mockResolvedValue([]);
+
+    await service.listRoles('manager-id', false);
+
+    expect(prisma.role.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { name: { not: 'admin' } } }),
+    );
+  });
+
+  it('omite permissões da resposta para quem pode apenas atribuir papéis', async () => {
+    prisma.userRole.findFirst.mockResolvedValue(null);
+    prisma.role.findMany.mockResolvedValue([
+      {
+        name: 'user',
+        description: 'Default user',
+        permissions: [{ permission: { code: 'users:read' } }],
+      },
+    ]);
+
+    await expect(service.listRoles('operator-id', false)).resolves.toEqual([
+      { name: 'user', description: 'Default user' },
+    ]);
+  });
+
+  it('impede remover o papel do último administrador', async () => {
+    users.rolesForAudit.mockResolvedValue({
+      userId: 'admin-id',
+      roles: ['admin'],
+    });
+    prisma.user.count.mockResolvedValue(1);
+
+    await expect(
+      service.setUserRoles('admin-id', ['user'], 'admin-id'),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(users.replaceRoles).not.toHaveBeenCalled();
   });
 });

@@ -42,6 +42,7 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly config: ConfigService,
   ) {}
+
   @Public()
   @Throttle({ default: { limit: 10, ttl: 900_000 } })
   @ApiOperation({
@@ -202,6 +203,7 @@ export class AuthController {
       return { accessToken: result.accessToken, user: result.user };
     });
   }
+
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiCookieAuth('refresh_token')
@@ -236,6 +238,7 @@ export class AuthController {
         return { accessToken: result.accessToken, user: result.user };
       });
   }
+
   @ApiCookieAuth('refresh_token')
   @ApiOperation({
     summary: 'Encerrar sessão',

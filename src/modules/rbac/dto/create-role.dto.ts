@@ -8,7 +8,10 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateRoleDto {
-  @ApiProperty({ example: 'manager', description: 'Nome único: letras minúsculas, números, _ ou -.' })
+  @ApiProperty({
+    example: 'manager',
+    description: 'Nome único: letras minúsculas, números, _ ou -.',
+  })
   @IsString()
   @MinLength(2)
   @MaxLength(100)

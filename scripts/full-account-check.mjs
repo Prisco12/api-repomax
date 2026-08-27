@@ -66,7 +66,8 @@ const waitForToken = async (recipient, subject) => {
         lastResult = `${subject} did not contain a token`;
       }
     } catch (error) {
-      lastResult = error instanceof Error ? error.message : 'Mailpit unavailable';
+      lastResult =
+        error instanceof Error ? error.message : 'Mailpit unavailable';
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
@@ -119,6 +120,49 @@ await expectStatus(
   }),
   400,
   'verification token reuse',
+);
+
+await expectStatus(
+  await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password: firstPassword }),
+  }),
+  403,
+  'login pending approval',
+);
+
+const admin = await login(
+  process.env.SEED_ADMIN_EMAIL,
+  process.env.SEED_ADMIN_PASSWORD,
+  'admin login',
+);
+const adminAuth = { authorization: `Bearer ${admin.body.data.accessToken}` };
+
+await expectStatus(
+  await request(`/users/${userId}/approval`, {
+    method: 'PUT',
+    headers: adminAuth,
+    body: JSON.stringify({ status: 'REJECTED' }),
+  }),
+  200,
+  'reject registration',
+);
+await expectStatus(
+  await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password: firstPassword }),
+  }),
+  403,
+  'login rejected registration',
+);
+await expectStatus(
+  await request(`/users/${userId}/approval`, {
+    method: 'PUT',
+    headers: adminAuth,
+    body: JSON.stringify({ status: 'APPROVED' }),
+  }),
+  200,
+  'reconsider registration',
 );
 
 const firstSession = await login(email, firstPassword, 'verified login');
@@ -185,16 +229,15 @@ await expectStatus(
   'current user',
 );
 
-const admin = await login(
-  process.env.SEED_ADMIN_EMAIL,
-  process.env.SEED_ADMIN_PASSWORD,
-  'admin login',
-);
-const adminAuth = { authorization: `Bearer ${admin.body.data.accessToken}` };
 await expectStatus(
   await request('/rbac/permissions', { headers: adminAuth }),
   200,
   'rbac',
+);
+await expectStatus(
+  await request('/rbac/roles', { headers: adminAuth }),
+  200,
+  'roles available for assignment',
 );
 const audit = await request(
   '/audit-logs?action=AUTH_PASSWORD_RESET_COMPLETED&status=SUCCESS&limit=20',
@@ -227,7 +270,10 @@ for (let attempt = 1; attempt <= 5; attempt += 1) {
   await expectStatus(
     await request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email: blockedEmail, password: 'invalid-password' }),
+      body: JSON.stringify({
+        email: blockedEmail,
+        password: 'invalid-password',
+      }),
     }),
     401,
     `invalid login ${attempt}`,
@@ -243,4 +289,3 @@ await expectStatus(
 );
 
 console.log('Full account integration checks passed');
-

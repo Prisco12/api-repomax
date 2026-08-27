@@ -47,6 +47,27 @@ const envSchema = z.object({
   RATE_LIMIT_TTL_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
+  AUDIT_RETENTION_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
+  AUDIT_RETENTION_DRY_RUN: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  AUDIT_RETENTION_DAYS: z.coerce.number().int().min(30).default(365),
+  AUDIT_CLEANUP_BATCH_SIZE: z.coerce
+    .number()
+    .int()
+    .min(100)
+    .max(5_000)
+    .default(1_000),
+  AUDIT_CLEANUP_MAX_BATCHES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1_000)
+    .default(100),
   DATABASE_URL: z.string().url(),
 });
 

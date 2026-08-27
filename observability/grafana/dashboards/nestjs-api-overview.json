@@ -120,6 +120,128 @@
       ],
       "title": "Erros",
       "type": "logs"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Quantidade de registros de auditoria removidos pela política de retenção no período selecionado.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "yellow", "mode": "fixed" },
+          "decimals": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 20 },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(audit_retention_deleted_total[$__range]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Logs de auditoria removidos",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Falhas da rotina de retenção de auditoria no período selecionado.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 6, "y": 20 },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(audit_retention_failures_total[$__range]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Falhas na retenção",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Duração da execução mais recente da rotina de retenção.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "blue", "mode": "fixed" },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 20 },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false }
+      },
+      "targets": [
+        { "expr": "max(audit_retention_duration_seconds)", "refId": "A" }
+      ],
+      "title": "Duração da última retenção",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Tempo transcorrido desde a última execução bem-sucedida da retenção.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 90000 },
+              { "color": "red", "value": 176400 }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 20 },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false }
+      },
+      "targets": [
+        {
+          "expr": "time() - max(audit_retention_last_success_timestamp_seconds)",
+          "refId": "A"
+        }
+      ],
+      "title": "Tempo desde a última retenção",
+      "type": "stat"
     }
   ],
   "refresh": "5s",
@@ -128,7 +250,7 @@
   "templating": { "list": [] },
   "time": { "from": "now-30m", "to": "now" },
   "timezone": "browser",
-  "title": "NestJS API Overview",
+  "title": "RepoMax API — Visão geral",
   "uid": "nestjs-api-overview",
-  "version": 1
+  "version": 2
 }

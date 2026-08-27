@@ -12,7 +12,9 @@ const request = (path, options = {}) =>
 
 const assertStatus = (response, expected, label) => {
   if (response.status !== expected) {
-    throw new Error(`${label}: expected ${expected}, received ${response.status}`);
+    throw new Error(
+      `${label}: expected ${expected}, received ${response.status}`,
+    );
   }
 };
 
@@ -45,16 +47,33 @@ const login = await request('/auth/login', {
 assertStatus(login, 200, 'login');
 const loginBody = await login.json();
 const cookie = login.headers.get('set-cookie')?.split(';')[0];
-if (!cookie || !loginBody.data?.accessToken) throw new Error('login did not return credentials');
+if (!cookie || !loginBody.data?.accessToken)
+  throw new Error('login did not return credentials');
 
-const refresh = await request('/auth/refresh', { method: 'POST', headers: { cookie } });
+const refresh = await request('/auth/refresh', {
+  method: 'POST',
+  headers: { cookie },
+});
 assertStatus(refresh, 200, 'refresh');
 const refreshBody = await refresh.json();
-const refreshedCookie = refresh.headers.get('set-cookie')?.split(';')[0] ?? cookie;
-const authorization = { authorization: `Bearer ${refreshBody.data.accessToken}` };
+const refreshedCookie =
+  refresh.headers.get('set-cookie')?.split(';')[0] ?? cookie;
+const authorization = {
+  authorization: `Bearer ${refreshBody.data.accessToken}`,
+};
 
-assertStatus(await request('/rbac/permissions', { headers: authorization }), 200, 'rbac');
-assertStatus(await request('/audit-logs?status=SUCCESS&limit=5', { headers: authorization }), 200, 'audit');
+assertStatus(
+  await request('/rbac/permissions', { headers: authorization }),
+  200,
+  'rbac',
+);
+assertStatus(
+  await request('/audit-logs?status=SUCCESS&limit=5', {
+    headers: authorization,
+  }),
+  200,
+  'audit',
+);
 assertStatus(
   await request('/auth/logout', {
     method: 'POST',

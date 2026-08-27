@@ -3,6 +3,8 @@ export const Permission = {
   USERS_CREATE: 'users:create',
   USERS_UPDATE: 'users:update',
   USERS_DELETE: 'users:delete',
+  USERS_APPROVE: 'users:approve',
+  ROLES_ASSIGN: 'roles:assign',
   ROLES_MANAGE: 'roles:manage',
   AUDIT_READ: 'audit:read',
 } as const;

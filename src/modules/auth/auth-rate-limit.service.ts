@@ -19,7 +19,10 @@ export class AuthRateLimitService {
     return { hourlyKey: key + ':hour', dailyKey: key + ':day' };
   }
 
-  async releaseRegistration(reservation: { hourlyKey: string; dailyKey: string }) {
+  async releaseRegistration(reservation: {
+    hourlyKey: string;
+    dailyKey: string;
+  }) {
     await Promise.all([
       this.rateLimit.client.decr(reservation.hourlyKey),
       this.rateLimit.client.decr(reservation.dailyKey),
@@ -59,7 +62,11 @@ export class AuthRateLimitService {
     );
   }
 
-  private async increment(key: string, limit: number, ttlSeconds: number): Promise<Counter> {
+  private async increment(
+    key: string,
+    limit: number,
+    ttlSeconds: number,
+  ): Promise<Counter> {
     const value = await this.rateLimit.client.incr(key);
     if (value === 1) await this.rateLimit.client.expire(key, ttlSeconds);
     const ttl = await this.rateLimit.client.ttl(key);

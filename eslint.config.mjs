@@ -38,6 +38,11 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-enum-comparison': 'off',
       '@typescript-eslint/require-await': 'off',
       '@typescript-eslint/unbound-method': 'off',
+      'lines-between-class-members': [
+        'error',
+        'always',
+        { exceptAfterSingleLine: true },
+      ],
     },
   },
 );

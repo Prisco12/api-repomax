@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: 5
+
 services:
   api:
     build: .
@@ -20,6 +26,7 @@ services:
       MAIL_USER: ${MAIL_USER:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-NestJS API <no-reply@example.test>}
+    logging: *default-logging
 
   postgres:
     image: postgres:17
@@ -36,6 +43,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    logging: *default-logging
 
   redis:
     image: redis:7-alpine
@@ -48,12 +56,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    logging: *default-logging
 
   mailpit:
     image: axllent/mailpit:v1.27
     ports:
       - '1025:1025'
       - '8025:8025'
+    logging: *default-logging
 
 volumes:
   postgres_data:

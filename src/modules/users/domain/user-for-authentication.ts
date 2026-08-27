@@ -3,6 +3,7 @@ export interface UserForAuthentication {
   email: string;
   passwordHash: string;
   isActive: boolean;
+  accountStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
   authorizationVersion: number;
   emailVerifiedAt: Date | null;
   emailVerificationTokenHash: string | null;

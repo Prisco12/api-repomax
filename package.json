@@ -11,6 +11,8 @@
     "seed:admin": "tsx prisma/seed-admin.ts",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "lint": "eslint \"src/**/*.ts\" \"test/support/**/*.ts\" --max-warnings=0",
     "test": "jest",
     "test:watch": "jest --watch",

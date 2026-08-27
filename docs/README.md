@@ -17,7 +17,13 @@ Para logs centralizados, métricas, traces e Grafana, consulte o [guia de observ
 
 `npm run seed` é um atalho para executar os dois comandos acima. O `seed:admin` nunca troca a senha de um administrador já existente. Ao adicionar permissões ao catálogo, execute somente `npm run seed:rbac`.
 
-Após esta alteração, quem se cadastra em `POST /api/v1/auth/register` recebe automaticamente a role `user`. Isso exige que o seed tenha sido executado.
+Quem se cadastra em `POST /api/v1/auth/register` recebe automaticamente a role `user` e começa com `accountStatus = PENDING`. Isso exige que o seed tenha sido executado.
+
+## Aprovação de cadastros
+
+O acesso exige duas condições independentes: e-mail confirmado e conta aprovada. Usuários com `users:approve` podem consultar `GET /api/v1/users/approvals`, filtrando por `PENDING`, `APPROVED` ou `REJECTED`, e decidir com `PUT /api/v1/users/:id/approval`. A mesma operação permite reconsiderar rejeições e revogar aprovações. Toda decisão é auditada e revoga sessões anteriores. A migration marca contas preexistentes como aprovadas para preservar o acesso.
+
+Contas administrativas são excluídas desse fluxo e não aceitam mudança de status pelo endpoint de aprovação. Na listagem geral, operadores comuns não recebem contas admin; administradores podem visualizá-las para gestão e auditoria.
 
 ## Verificação de e-mail e recuperação de senha
 
@@ -36,15 +42,17 @@ O arquivo `.env.example` usa Mailpit (`mailpit:1025`, sem TLS) e nunca deve cont
 
 ## Administração de roles e permissões
 
-Todos os endpoints abaixo exigem um access token com `roles:manage`. O administrador criado pelo seed recebe essa permissão após executar o seed e fazer login novamente.
+Criação de papéis e configuração de permissões exigem `roles:manage`. Atribuição de papéis a usuários exige a permissão independente `roles:assign`. O administrador criado pelo seed recebe ambas após executar o seed e fazer login novamente.
 
 - `GET /api/v1/rbac/permissions`: lista as permissões permitidas pelo template;
-- `GET /api/v1/rbac/roles`: lista roles e suas permissões;
+- `GET /api/v1/rbac/roles`: exige `roles:manage` ou `roles:assign`; retorna permissões somente para quem pode gerenciá-las;
 - `POST /api/v1/rbac/roles`: cria uma role;
 - `PUT /api/v1/rbac/roles/:name/permissions`: substitui as permissões da role;
-- `PUT /api/v1/rbac/users/:userId/roles`: substitui as roles do usuário.
+- `PUT /api/v1/rbac/users/:userId/roles`: substitui as roles do usuário (`roles:assign`).
 
-As permissões continuam declaradas em `src/modules/authorization/permission-catalog.ts`; a API não aceita strings de permissão arbitrárias. Depois de alterar roles/permissões de um usuário, ele deve fazer login novamente (ou usar o refresh token) para receber o JWT atualizado.
+As permissões continuam declaradas em `src/modules/authorization/permission-catalog.ts`; a API não aceita strings arbitrárias. Depois de alterar roles/permissões, tokens anteriores são invalidados. O papel `admin` é protegido: apenas alguém que já possua esse papel pode visualizá-lo, atribuí-lo, removê-lo ou editar suas permissões. Ter `roles:manage` ou `roles:assign` isoladamente não concede esse poder.
+
+A API também impede a remoção do papel do último administrador existente.
 
 ## Refresh tokens
 
@@ -83,15 +91,29 @@ A cobertura atual valida regras de Auth, Rate Limit, Users e RBAC: e-mail duplic
 
 `GET /api/v1/users` também usa a mesma paginação. Esta é a convenção para endpoints de listagem novos: o controller recebe `@PaginationParams()`, a service retorna `createPaginatedResult(items, page, limit, totalItems)` e o interceptor coloca os dados de paginação em `meta`.
 
+### Retenção da auditoria
+
+A rotina `AuditRetentionService` executa diariamente às 04:00 e mantém, por padrão, 365 dias de histórico. Ela usa lock distribuído no Redis, seleciona registros antigos em lotes e limita a quantidade de lotes por execução. A limpeza não possui endpoint HTTP.
+
+```dotenv
+AUDIT_RETENTION_ENABLED=true
+AUDIT_RETENTION_DRY_RUN=false
+AUDIT_RETENTION_DAYS=365
+AUDIT_CLEANUP_BATCH_SIZE=1000
+AUDIT_CLEANUP_MAX_BATCHES=100
+```
+
+O prazo mínimo aceito é 30 dias. Em produção, comece com `AUDIT_RETENTION_DRY_RUN=true`: a rotina contará candidatos e registrará o resultado sem excluir. Depois de conferir os logs, altere para `false`. As métricas `audit_retention_deleted_total`, `audit_retention_failures_total`, `audit_retention_duration_seconds` e `audit_retention_last_success_timestamp_seconds` ficam disponíveis quando métricas estão habilitadas.
+
 ## CI e integração
 
-O workflow `.github/workflows/ci.yml` compila, executa lint e testes unitários em cada push e Pull Request. Depois sobe Docker, aplica migrations, executa seed e roda `npm run test:integration`. O cenário cria uma conta, obtém os tokens de confirmação/reset pela API do Mailpit e valida login, rotação e revogação do refresh cookie, troca de senha, `/users/me`, RBAC, auditoria, logout e rate limit. Localmente, com a API Docker em execução, migrations aplicadas e seed executado, use `docker compose exec -T api npm run test:integration`. A verificação curta anterior continua disponível em `npm run test:integration:smoke`.
+O workflow `.github/workflows/ci.yml` compila, executa lint e testes unitários em cada push e Pull Request. Depois sobe Docker, aplica migrations, executa seed e roda `npm run test:integration`. O cenário cria uma conta, confirma o e-mail, valida bloqueio pendente, rejeição e reconsideração pelo administrador, além de login, rotação e revogação do refresh cookie, troca de senha, `/users/me`, RBAC, auditoria, logout e rate limit. Localmente, com a API Docker em execução, migrations aplicadas e seed executado, use `docker compose exec -T api npm run test:integration`. A verificação curta anterior continua disponível em `npm run test:integration:smoke`.
 
 Ao copiar somente este template para um repositório novo, mantenha a pasta `.github/` que já está dentro dele. A CI standalone funciona sem os demais diretórios deste monorepo.
 
 ## API e testes manuais
 
-Importe `postman/api-postgres.postman_collection.json` no Postman. A coleção salva o access token e `userId` após login/refresh; o cookie jar mantém o refresh token HttpOnly. Depois de Register ou Forgot password, execute a requisição seguinte de captura do Mailpit para preencher `verificationToken` ou `passwordResetToken` automaticamente.
+Importe `postman/api-postgres.postman_collection.json` no Postman. A coleção salva o access token e `userId` após login/refresh; o cookie jar mantém o refresh token HttpOnly. Ela também inclui listagem/revisão de cadastros e papéis atribuíveis. Depois de Register ou Forgot password, execute a requisição seguinte de captura do Mailpit para preencher `verificationToken` ou `passwordResetToken` automaticamente.
 
 ## Docker
 
