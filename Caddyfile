@@ -1,0 +1,12 @@
+{
+  email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+  encode zstd gzip
+
+  @internal path /api/v1/metrics /api/v1/metrics/* /docs /docs/*
+  respond @internal 404
+
+  reverse_proxy api:3000
+}

@@ -1,0 +1,75 @@
+services:
+  api:
+    environment:
+      METRICS_ENABLED: 'true'
+      OTEL_ENABLED: 'true'
+      LOG_PRETTY: 'false'
+      OTEL_SERVICE_NAME: api-postgres
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://alloy:4318/v1/traces
+    depends_on:
+      alloy:
+        condition: service_started
+
+  alloy:
+    image: grafana/alloy:v1.10.2
+    command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+    ports:
+      - '12345:12345'
+      - '4317:4317'
+      - '4318:4318'
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+      - tempo
+
+  loki:
+    image: grafana/loki:3.5.3
+    command: -config.file=/etc/loki/local-config.yml
+    ports:
+      - '3100:3100'
+    volumes:
+      - ./observability/loki/config.yml:/etc/loki/local-config.yml:ro
+      - loki_data:/loki
+
+  tempo:
+    image: grafana/tempo:2.8.2
+    command: -config.file=/etc/tempo/config.yml
+    ports:
+      - '3200:3200'
+    volumes:
+      - ./observability/tempo/config.yml:/etc/tempo/config.yml:ro
+      - tempo_data:/var/tempo
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command: --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    ports:
+      - '3001:3000'
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - loki
+      - tempo
+      - prometheus
+
+volumes:
+  loki_data:
+  tempo_data:
+  prometheus_data:
+  grafana_data:

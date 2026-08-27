@@ -1,0 +1,355 @@
+{
+  "info": {
+    "_postman_id": "d130437d-87d1-4e77-a750-4ca78df86da7",
+    "name": "API PostgreSQL - NestJS Template",
+    "description": "Coleção inicial do template NestJS com PostgreSQL.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "mailpitUrl", "value": "http://localhost:8025" },
+    { "key": "accessToken", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "userEmail", "value": "new.user@example.com" },
+    { "key": "userPassword", "value": "ChangeMe123!" },
+    { "key": "adminEmail", "value": "admin@example.com" },
+    { "key": "adminPassword", "value": "ChangeMe123!" },
+    { "key": "verificationToken", "value": "" },
+    { "key": "passwordResetToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Liveness",
+          "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+        },
+        {
+          "name": "Readiness",
+          "request": { "method": "GET", "url": "{{baseUrl}}/health/ready" }
+        },
+        {
+          "name": "Prometheus metrics",
+          "request": {
+            "description": "Endpoint operacional disponível somente quando METRICS_ENABLED=true. Retorna texto no formato Prometheus.",
+            "method": "GET",
+            "url": "{{baseUrl}}/metrics"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "description": "A senha deve ter de 12 a 128 caracteres e conter minúscula, maiúscula, número e símbolo. Em caso de erro, error.details retorna field, code e message.",
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "Capture verification token from Mailpit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const messages = pm.response.json().messages || [];",
+                  "const email = pm.collectionVariables.get('userEmail').toLowerCase();",
+                  "const message = messages.find((item) => {",
+                  "  const value = JSON.stringify(item).toLowerCase();",
+                  "  return value.includes(email) && value.includes('confirme seu e-mail');",
+                  "});",
+                  "pm.expect(message, 'verification email in Mailpit').to.exist;",
+                  "const id = message.ID || message.Id || message.id;",
+                  "pm.sendRequest(`${pm.collectionVariables.get('mailpitUrl')}/api/v1/message/${encodeURIComponent(id)}`, (error, response) => {",
+                  "  pm.expect(error).to.equal(null);",
+                  "  const detail = response.json();",
+                  "  const content = [detail.Text, detail.HTML, detail.text, detail.html].filter(Boolean).join('\\n').replaceAll('&amp;', '&');",
+                  "  const match = content.match(/[?&]token=([^\\s&\\\"'<>]+)/);",
+                  "  pm.expect(match, 'verification token').not.to.equal(null);",
+                  "  pm.collectionVariables.set('verificationToken', decodeURIComponent(match[1]));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "description": "Localiza no Mailpit o e-mail de confirmação do userEmail e salva verificationToken automaticamente.",
+            "method": "GET",
+            "url": "{{mailpitUrl}}/api/v1/messages"
+          }
+        },
+        {
+          "name": "Verify email",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{verificationToken}}\"\n}" },
+            "url": "{{baseUrl}}/auth/verify-email"
+          }
+        },
+        {
+          "name": "Resend verification",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{userEmail}}\"\n}" },
+            "url": "{{baseUrl}}/auth/resend-verification"
+          }
+        },
+        {
+          "name": "Forgot password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{userEmail}}\"\n}" },
+            "url": "{{baseUrl}}/auth/forgot-password"
+          }
+        },
+        {
+          "name": "Capture password reset token from Mailpit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const messages = pm.response.json().messages || [];",
+                  "const email = pm.collectionVariables.get('userEmail').toLowerCase();",
+                  "const message = messages.find((item) => {",
+                  "  const value = JSON.stringify(item).toLowerCase();",
+                  "  return value.includes(email) && value.includes('redefina sua senha');",
+                  "});",
+                  "pm.expect(message, 'password reset email in Mailpit').to.exist;",
+                  "const id = message.ID || message.Id || message.id;",
+                  "pm.sendRequest(`${pm.collectionVariables.get('mailpitUrl')}/api/v1/message/${encodeURIComponent(id)}`, (error, response) => {",
+                  "  pm.expect(error).to.equal(null);",
+                  "  const detail = response.json();",
+                  "  const content = [detail.Text, detail.HTML, detail.text, detail.html].filter(Boolean).join('\\n').replaceAll('&amp;', '&');",
+                  "  const match = content.match(/[?&]token=([^\\s&\\\"'<>]+)/);",
+                  "  pm.expect(match, 'password reset token').not.to.equal(null);",
+                  "  pm.collectionVariables.set('passwordResetToken', decodeURIComponent(match[1]));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "description": "Localiza no Mailpit o e-mail de redefinição do userEmail e salva passwordResetToken automaticamente.",
+            "method": "GET",
+            "url": "{{mailpitUrl}}/api/v1/messages"
+          }
+        },
+        {
+          "name": "Reset password",
+          "request": {
+            "description": "A nova senha usa a mesma política do cadastro: 12 a 128 caracteres, minúscula, maiúscula, número e símbolo.",
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{passwordResetToken}}\",\n  \"password\": \"NovaSenha123!\"\n}" },
+            "url": "{{baseUrl}}/auth/reset-password"
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.accessToken) pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "if (body.data?.user?.id) pm.collectionVariables.set('userId', body.data.user.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Refresh token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.accessToken) pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "if (body.data?.user?.id) pm.collectionVariables.set('userId', body.data.user.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 204) {",
+                  "  pm.collectionVariables.unset('accessToken');",
+                  "  pm.collectionVariables.unset('userId');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Current user",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/users/me"
+          }
+        },
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/users?page=1&limit=20"
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC",
+      "item": [
+        {
+          "name": "List permissions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/rbac/permissions"
+          }
+        },
+        {
+          "name": "List roles",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/rbac/roles"
+          }
+        },
+        {
+          "name": "Create role",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"manager\",\n  \"description\": \"Example role\"\n}"
+            },
+            "url": "{{baseUrl}}/rbac/roles"
+          }
+        },
+        {
+          "name": "Set role permissions",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissions\": [\"users:read\"]\n}"
+            },
+            "url": "{{baseUrl}}/rbac/roles/manager/permissions"
+          }
+        },
+        {
+          "name": "Set user roles",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roles\": [\"user\", \"manager\"]\n}"
+            },
+            "url": "{{baseUrl}}/rbac/users/{{userId}}/roles"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Audit",
+      "item": [
+        {
+          "name": "List audit logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/audit-logs?page=1&limit=20"
+          }
+        },
+        {
+          "name": "List successful logins",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/audit-logs?page=1&limit=20&action=AUTH_LOGIN_SUCCESS&status=SUCCESS"
+          }
+        }
+      ]
+    }
+  ]
+}
