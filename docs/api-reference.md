@@ -27,6 +27,55 @@ Prefixo: `/api/v1`. Respostas de sucesso usam `success`, `data` e `meta`.
 - `GET /rbac/roles` (`roles:manage` ou `roles:assign`)
 - `GET /rbac/permissions`, `POST /rbac/roles`, `PUT /rbac/roles/:name/permissions` (`roles:manage`)
 - `PUT /rbac/users/:userId/roles` (`roles:assign`)
+- `GET /admin/categories`, `GET /admin/categories/:id` (`categories:read`)
+- `POST /admin/categories` (`categories:create`)
+- `PUT /admin/categories/:id`, `PATCH /admin/categories/:id/status` (`categories:update`)
+- `DELETE /admin/categories/:id` (`categories:delete`)
+- `GET /admin/products`, `GET /admin/products/:id` (`products:read`)
+- `POST /admin/products` (`products:create`)
+- `PUT /admin/products/:id` (`products:update`)
+- `PATCH /admin/products/:id/status` (`products:publish`)
+- `DELETE /admin/products/:id` (`products:delete`)
+
+## Catálogo público
+
+- `GET /categories` retorna a árvore de categorias ativas.
+- `GET /categories/:slug` retorna uma categoria ativa pelo slug.
+- `GET /products` retorna produtos `PUBLISHED` e aceita `category`, `featured`, `search`, `page` e `limit`.
+- `GET /products/:slug` retorna um produto publicado pelo slug.
+
+Produtos são criados como `DRAFT`. A publicação exige ao menos uma categoria ativa e preenche `publishedAt` somente na primeira publicação. `DELETE /admin/products/:id` arquiva o produto, sem remoção física. Categorias em uso são desativadas pelo `DELETE`; categorias sem produtos e sem filhas são removidas. A desativação é bloqueada quando a categoria é a última categoria ativa de um produto publicado.
+
+`Product.sortOrder` controla a ordem geral. O `sortOrder` de cada item de `categories` controla a posição do produto naquela categoria específica. Ao filtrar `GET /products?category=slug`, a API usa a ordem da associação e desempata pelo nome. Valores repetidos são permitidos.
+
+Exemplo de criação de categoria:
+
+```json
+{
+  "name": "Suspensão",
+  "description": "Componentes para suspensão automotiva",
+  "sortOrder": 1
+}
+```
+
+Exemplo de criação de produto:
+
+```json
+{
+  "name": "Amortecedor dianteiro RepoMax",
+  "sku": "AM-001",
+  "price": "499.90",
+  "showPrice": true,
+  "specifications": { "aplicacao": "Dianteira" },
+  "categories": [
+    { "categoryId": "00000000-0000-0000-0000-000000000000", "sortOrder": 0 }
+  ]
+}
+```
+
+O `PUT /admin/products/:id` aceita `name`, `slug`, `sku`, `shortDescription`, `description`, `price`, `showPrice`, `isFeatured`, `sortOrder`, `specifications` e `categories`. Todos são opcionais; campos omitidos mantêm o valor atual. Quando `categories` é enviado, ele substitui a lista completa de categorias do produto. O status editorial é alterado separadamente pelo `PATCH /admin/products/:id/status`.
+
+Preço é recebido e devolvido como string decimal. `showPrice=true` exige `price`. Slug omitido é gerado a partir do nome; alterar o nome depois não altera automaticamente o slug.
 
 Importe a coleção em `postman/api-postgres.postman_collection.json` para exemplos de payloads.
 

@@ -47,6 +47,7 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('NestJS API - PostgreSQL')
     .setVersion('1.0')
+    .addBearerAuth()
     .addCookieAuth('refresh_token')
     .build();
   SwaggerModule.setup(

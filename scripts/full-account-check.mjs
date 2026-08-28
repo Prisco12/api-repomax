@@ -239,6 +239,85 @@ await expectStatus(
   200,
   'roles available for assignment',
 );
+
+const catalogSuffix = Date.now();
+const categorySlug = `integration-category-${catalogSuffix}`;
+const productSlug = `integration-product-${catalogSuffix}`;
+const categoryResponse = await request('/admin/categories', {
+  method: 'POST',
+  headers: adminAuth,
+  body: JSON.stringify({
+    name: `Integration Category ${catalogSuffix}`,
+    slug: categorySlug,
+  }),
+});
+await expectStatus(categoryResponse, 201, 'create category');
+const categoryId = (await categoryResponse.json()).data?.id;
+if (!categoryId) throw new Error('create category: id was not returned');
+
+const productResponse = await request('/admin/products', {
+  method: 'POST',
+  headers: adminAuth,
+  body: JSON.stringify({
+    name: `Integration Product ${catalogSuffix}`,
+    slug: productSlug,
+    sku: `INTEGRATION-${catalogSuffix}`,
+    price: '99.90',
+    showPrice: true,
+    specifications: { source: 'integration-check' },
+    categories: [{ categoryId, sortOrder: 0 }],
+  }),
+});
+await expectStatus(productResponse, 201, 'create product');
+const productId = (await productResponse.json()).data?.id;
+if (!productId) throw new Error('create product: id was not returned');
+
+await expectStatus(
+  await request(`/products/${productSlug}`),
+  404,
+  'draft product is private',
+);
+await expectStatus(
+  await request(`/admin/products/${productId}/status`, {
+    method: 'PATCH',
+    headers: adminAuth,
+    body: JSON.stringify({ status: 'PUBLISHED' }),
+  }),
+  200,
+  'publish product',
+);
+await expectStatus(
+  await request(`/products/${productSlug}`),
+  200,
+  'published product detail',
+);
+await expectStatus(
+  await request(`/products?category=${categorySlug}`),
+  200,
+  'published products by category',
+);
+await expectStatus(
+  await request(`/admin/products/${productId}`, {
+    method: 'DELETE',
+    headers: adminAuth,
+  }),
+  200,
+  'archive product',
+);
+await expectStatus(
+  await request(`/products/${productSlug}`),
+  404,
+  'archived product is private',
+);
+await expectStatus(
+  await request(`/admin/categories/${categoryId}`, {
+    method: 'DELETE',
+    headers: adminAuth,
+  }),
+  200,
+  'deactivate category in use',
+);
+
 const audit = await request(
   '/audit-logs?action=AUTH_PASSWORD_RESET_COMPLETED&status=SUCCESS&limit=20',
   { headers: adminAuth },

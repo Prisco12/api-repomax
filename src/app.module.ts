@@ -18,6 +18,8 @@ import { RedisModule } from './infrastructure/redis/redis.module';
 import { RateLimitModule } from './modules/rate-limit/rate-limit.module';
 import { ObservabilityModule } from './infrastructure/observability/observability.module';
 import { traceLogContext } from './infrastructure/observability/trace-context';
+import { CategoriesModule } from './modules/categories/categories.module';
+import { ProductsModule } from './modules/products/products.module';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const prettyLogs = process.env.LOG_PRETTY
@@ -95,6 +97,8 @@ const prettyLogs = process.env.LOG_PRETTY
     AuditModule,
     RbacModule,
     UsersModule,
+    CategoriesModule,
+    ProductsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

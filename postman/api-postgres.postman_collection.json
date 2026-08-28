@@ -17,7 +17,11 @@
     { "key": "adminEmail", "value": "admin@example.com" },
     { "key": "adminPassword", "value": "ChangeMe123!" },
     { "key": "verificationToken", "value": "" },
-    { "key": "passwordResetToken", "value": "" }
+    { "key": "passwordResetToken", "value": "" },
+    { "key": "categoryId", "value": "" },
+    { "key": "productId", "value": "" },
+    { "key": "categorySlug", "value": "suspensao" },
+    { "key": "productSlug", "value": "amortecedor-dianteiro-repomax" }
   ],
   "item": [
     {
@@ -377,6 +381,212 @@
               "raw": "{\n  \"roles\": [\"user\", \"manager\"]\n}"
             },
             "url": "{{baseUrl}}/rbac/users/{{userId}}/roles"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "Public category tree",
+          "request": { "method": "GET", "url": "{{baseUrl}}/categories" }
+        },
+        {
+          "name": "Public category by slug",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/categories/{{categorySlug}}"
+          }
+        },
+        {
+          "name": "Admin list categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/admin/categories?page=1&limit=20"
+          }
+        },
+        {
+          "name": "Admin category by id",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/admin/categories/{{categoryId}}"
+          }
+        },
+        {
+          "name": "Create category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.id) pm.collectionVariables.set('categoryId', body.data.id);",
+                  "if (body.data?.slug) pm.collectionVariables.set('categorySlug', body.data.slug);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Suspensão\",\n  \"description\": \"Componentes para suspensão automotiva\",\n  \"sortOrder\": 1\n}"
+            },
+            "url": "{{baseUrl}}/admin/categories"
+          }
+        },
+        {
+          "name": "Update category",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Categoria atualizada\",\n  \"sortOrder\": 2\n}"
+            },
+            "url": "{{baseUrl}}/admin/categories/{{categoryId}}"
+          }
+        },
+        {
+          "name": "Set category status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"isActive\": true\n}" },
+            "url": "{{baseUrl}}/admin/categories/{{categoryId}}/status"
+          }
+        },
+        {
+          "name": "Delete or deactivate category",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/admin/categories/{{categoryId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "Public products",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products?page=1&limit=20&category={{categorySlug}}"
+          }
+        },
+        {
+          "name": "Public product by slug",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products/{{productSlug}}"
+          }
+        },
+        {
+          "name": "Admin list products",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/admin/products?page=1&limit=20"
+          }
+        },
+        {
+          "name": "Admin product by id",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/admin/products/{{productId}}"
+          }
+        },
+        {
+          "name": "Create product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.id) pm.collectionVariables.set('productId', body.data.id);",
+                  "if (body.data?.slug) pm.collectionVariables.set('productSlug', body.data.slug);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Amortecedor dianteiro RepoMax\",\n  \"slug\": \"amortecedor-dianteiro-repomax\",\n  \"sku\": \"AM-001\",\n  \"shortDescription\": \"Amortecedor para suspensão dianteira\",\n  \"description\": \"Descrição completa do produto, aplicações e diferenciais.\",\n  \"price\": \"499.90\",\n  \"showPrice\": true,\n  \"isFeatured\": true,\n  \"sortOrder\": 0,\n  \"specifications\": { \"aplicacao\": \"Dianteira\", \"material\": \"Aço\" },\n  \"categories\": [{ \"categoryId\": \"{{categoryId}}\", \"sortOrder\": 0 }]\n}"
+            },
+            "url": "{{baseUrl}}/admin/products"
+          }
+        },
+        {
+          "name": "Update product",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Amortecedor dianteiro RepoMax atualizado\",\n  \"slug\": \"amortecedor-dianteiro-repomax-atualizado\",\n  \"sku\": \"AM-001\",\n  \"shortDescription\": \"Descrição curta atualizada\",\n  \"description\": \"Descrição completa atualizada.\",\n  \"price\": \"499.90\",\n  \"showPrice\": true,\n  \"isFeatured\": true,\n  \"sortOrder\": 0,\n  \"specifications\": { \"aplicacao\": \"Dianteira\", \"material\": \"Aço\" },\n  \"categories\": [{ \"categoryId\": \"{{categoryId}}\", \"sortOrder\": 0 }]\n}"
+            },
+            "url": "{{baseUrl}}/admin/products/{{productId}}"
+          }
+        },
+        {
+          "name": "Publish product",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PUBLISHED\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/products/{{productId}}/status"
+          }
+        },
+        {
+          "name": "Archive product",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/admin/products/{{productId}}"
           }
         }
       ]

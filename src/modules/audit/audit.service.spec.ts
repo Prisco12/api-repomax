@@ -1,10 +1,11 @@
 import { AuditService } from './audit.service';
 import { mockDependency } from '../../../test/support/mock-dependency';
+import { runWithRequestContext } from '../../common/context/request-context';
 
 describe('AuditService', () => {
   const prisma = {
     $transaction: jest.fn(),
-    auditLog: { findMany: jest.fn(), count: jest.fn() },
+    auditLog: { findMany: jest.fn(), count: jest.fn(), create: jest.fn() },
   };
   let service: AuditService;
 
@@ -58,6 +59,33 @@ describe('AuditService', () => {
         hasNextPage: true,
         hasPreviousPage: true,
       },
+    });
+  });
+
+  it('inclui o contexto da requisição em registros de auditoria', async () => {
+    prisma.auditLog.create.mockResolvedValue({ id: 'log-id' });
+
+    await runWithRequestContext(
+      {
+        requestId: 'request-id',
+        ip: '127.0.0.1',
+        userAgent: 'RepoMax test',
+      },
+      () =>
+        service.record({
+          action: 'PRODUCT_UPDATED',
+          resource: 'products',
+          resourceId: 'product-id',
+          status: 'SUCCESS',
+        }),
+    );
+
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        requestId: 'request-id',
+        ip: '127.0.0.1',
+        userAgent: 'RepoMax test',
+      }),
     });
   });
 });

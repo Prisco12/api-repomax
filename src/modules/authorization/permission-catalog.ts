@@ -7,6 +7,15 @@ export const Permission = {
   ROLES_ASSIGN: 'roles:assign',
   ROLES_MANAGE: 'roles:manage',
   AUDIT_READ: 'audit:read',
+  PRODUCTS_READ: 'products:read',
+  PRODUCTS_CREATE: 'products:create',
+  PRODUCTS_UPDATE: 'products:update',
+  PRODUCTS_DELETE: 'products:delete',
+  PRODUCTS_PUBLISH: 'products:publish',
+  CATEGORIES_READ: 'categories:read',
+  CATEGORIES_CREATE: 'categories:create',
+  CATEGORIES_UPDATE: 'categories:update',
+  CATEGORIES_DELETE: 'categories:delete',
 } as const;
 
 export type PermissionCode = (typeof Permission)[keyof typeof Permission];

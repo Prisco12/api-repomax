@@ -3,12 +3,14 @@ import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { CreateAuditLog } from './audit.types';
 import { ListAuditLogsDto } from './dto/list-audit-logs.dto';
 import { createPaginatedResult } from '../../common/types/pagination';
+import { getRequestContext } from '../../common/context/request-context';
 
 @Injectable()
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
   record(input: CreateAuditLog) {
+    const context = getRequestContext();
     return this.prisma.auditLog.create({
       data: {
         actorId: input.actorId,
@@ -18,9 +20,9 @@ export class AuditService {
         status: input.status,
         beforeData: input.before,
         afterData: input.after,
-        requestId: input.requestId,
-        ip: input.ip,
-        userAgent: input.userAgent,
+        requestId: input.requestId ?? context?.requestId,
+        ip: input.ip ?? context?.ip,
+        userAgent: input.userAgent ?? context?.userAgent,
       },
     });
   }
