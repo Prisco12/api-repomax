@@ -9,10 +9,14 @@ describe('CategoriesService', () => {
       update: jest.fn(),
       delete: jest.fn(),
     },
-    product: { count: jest.fn() },
   };
   const audit = { record: jest.fn() };
-  const service = new CategoriesService(prisma as never, audit as never);
+  const products = { ensureCategoryCanBeDeactivated: jest.fn() };
+  const service = new CategoriesService(
+    prisma as never,
+    audit as never,
+    products as never,
+  );
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -58,11 +62,16 @@ describe('CategoriesService', () => {
       children: [],
       _count: { products: 1 },
     });
-    prisma.product.count.mockResolvedValue(1);
+    products.ensureCategoryCanBeDeactivated.mockRejectedValueOnce(
+      new ConflictException(),
+    );
 
     await expect(
       service.setStatus('category-id', false, 'actor-id'),
     ).rejects.toBeInstanceOf(ConflictException);
+    expect(products.ensureCategoryCanBeDeactivated).toHaveBeenCalledWith(
+      'category-id',
+    );
     expect(prisma.category.update).not.toHaveBeenCalled();
   });
 });

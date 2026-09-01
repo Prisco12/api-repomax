@@ -15,11 +15,18 @@ describe('ProductsService', () => {
       findMany: jest.fn(),
       count: jest.fn(),
     },
-    category: { count: jest.fn() },
     $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
   };
   const audit = { record: jest.fn() };
-  const service = new ProductsService(prisma as never, audit as never);
+  const categories = {
+    ensureCategoriesExist: jest.fn(),
+    ensureHasActiveCategory: jest.fn(),
+  };
+  const service = new ProductsService(
+    prisma as never,
+    audit as never,
+    categories as never,
+  );
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -58,10 +65,14 @@ describe('ProductsService', () => {
       categories: [],
       images: [],
     });
+    categories.ensureHasActiveCategory.mockRejectedValueOnce(
+      new BadRequestException(),
+    );
 
     await expect(
       service.setStatus('product-id', ProductStatus.PUBLISHED, 'actor-id'),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(categories.ensureHasActiveCategory).toHaveBeenCalledWith([]);
     expect(prisma.product.update).not.toHaveBeenCalled();
   });
 
@@ -86,7 +97,7 @@ describe('ProductsService', () => {
       categories: [category],
       images: [],
     });
-    prisma.category.count.mockResolvedValue(1);
+    categories.ensureHasActiveCategory.mockResolvedValue(undefined);
     prisma.product.update.mockResolvedValue({
       id: 'product-id',
       status: ProductStatus.PUBLISHED,
@@ -100,6 +111,9 @@ describe('ProductsService', () => {
 
     await service.setStatus('product-id', ProductStatus.PUBLISHED, 'actor-id');
 
+    expect(categories.ensureHasActiveCategory).toHaveBeenCalledWith([
+      'category-id',
+    ]);
     expect(prisma.product.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

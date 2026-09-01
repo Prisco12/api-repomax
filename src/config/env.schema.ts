@@ -68,6 +68,18 @@ const envSchema = z.object({
     .min(1)
     .max(1_000)
     .default(100),
+  FILE_STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  FILE_LOCAL_DIRECTORY: z.string().default('./uploads'),
+  FILE_SIGNED_URL_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(86_400)
+    .default(900),
+  AWS_REGION: z.string().default('sa-east-1'),
+  AWS_S3_BUCKET: z.string().optional(),
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
   DATABASE_URL: z.string().url(),
 });
 

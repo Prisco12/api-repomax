@@ -36,6 +36,9 @@ Prefixo: `/api/v1`. Respostas de sucesso usam `success`, `data` e `meta`.
 - `PUT /admin/products/:id` (`products:update`)
 - `PATCH /admin/products/:id/status` (`products:publish`)
 - `DELETE /admin/products/:id` (`products:delete`)
+- `POST /admin/products/:productId/images` (`products:update`, `multipart/form-data`, campo `file`)
+- `PATCH /admin/products/:productId/images/:imageId` (`products:update`)
+- `DELETE /admin/products/:productId/images/:imageId` (`products:update`)
 
 ## Catálogo público
 
@@ -74,6 +77,8 @@ Exemplo de criação de produto:
 ```
 
 O `PUT /admin/products/:id` aceita `name`, `slug`, `sku`, `shortDescription`, `description`, `price`, `showPrice`, `isFeatured`, `sortOrder`, `specifications` e `categories`. Todos são opcionais; campos omitidos mantêm o valor atual. Quando `categories` é enviado, ele substitui a lista completa de categorias do produto. O status editorial é alterado separadamente pelo `PATCH /admin/products/:id/status`.
+
+Imagens são enviadas separadamente em `POST /admin/products/:productId/images`. São aceitas JPEG, PNG e WebP de até 5 MB. A primeira imagem vira principal automaticamente. O bucket S3 deve permanecer privado: `GET /product-images/:imageId` libera apenas imagens de produtos publicados e redireciona para uma URL temporária assinada.
 
 Preço é recebido e devolvido como string decimal. `showPrice=true` exige `price`. Slug omitido é gerado a partir do nome; alterar o nome depois não altera automaticamente o slug.
 

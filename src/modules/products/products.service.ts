@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ConflictException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -13,8 +15,8 @@ import { AuditAction } from '../audit/audit.types';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ListAdminProductsDto } from './dto/list-admin-products.dto';
 import { ListProductsDto } from './dto/list-products.dto';
-import { ProductCategoryAssignmentDto } from './dto/product-category-assignment.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { CategoriesService } from '../categories/categories.service';
 
 const productInclude = {
   categories: {
@@ -44,6 +46,8 @@ export class ProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Inject(forwardRef(() => CategoriesService))
+    private readonly categoriesService: CategoriesService,
   ) {}
 
   async listPublic(filters: ListProductsDto) {
@@ -189,7 +193,9 @@ export class ProductsService {
   async create(dto: CreateProductDto, actorId: string) {
     this.validatePrice(dto.price, dto.showPrice ?? false);
     this.validateSpecifications(dto.specifications);
-    await this.validateCategories(dto.categories ?? []);
+    await this.categoriesService.ensureCategoriesExist(
+      (dto.categories ?? []).map((item) => item.categoryId),
+    );
     const slug = this.slugOrThrow(dto.slug ?? dto.name);
     try {
       const product = await this.prisma.product.create({
@@ -237,9 +243,11 @@ export class ProductsService {
     this.validatePrice(effectivePrice, effectiveShowPrice);
     this.validateSpecifications(dto.specifications);
     if (dto.categories) {
-      await this.validateCategories(dto.categories);
+      await this.categoriesService.ensureCategoriesExist(
+        dto.categories.map((item) => item.categoryId),
+      );
       if (before.status === ProductStatus.PUBLISHED)
-        await this.ensurePublishable(
+        await this.categoriesService.ensureHasActiveCategory(
           dto.categories.map((item) => item.categoryId),
         );
     }
@@ -307,7 +315,7 @@ export class ProductsService {
   async setStatus(id: string, status: ProductStatus, actorId: string) {
     const before = await this.findProductOrThrow(id);
     if (status === ProductStatus.PUBLISHED) {
-      await this.ensurePublishable(
+      await this.categoriesService.ensureHasActiveCategory(
         before.categories.map((item) => item.categoryId as string),
       );
     }
@@ -364,29 +372,22 @@ export class ProductsService {
     return product;
   }
 
-  private async validateCategories(categories: ProductCategoryAssignmentDto[]) {
-    if (!categories.length) return;
-    const count = await this.prisma.category.count({
-      where: { id: { in: categories.map((item) => item.categoryId) } },
-    });
-    if (count !== categories.length)
-      throw new NotFoundException('One or more categories were not found');
-  }
-
-  private async ensurePublishable(categoryIds: string[]) {
-    if (!categoryIds.length)
-      throw new BadRequestException(
-        'Published product must have at least one active category',
-      );
-    const active = await this.prisma.category.count({
+  async ensureCategoryCanBeDeactivated(categoryId: string) {
+    const dependentProducts = await this.prisma.product.count({
       where: {
-        id: { in: categoryIds },
-        isActive: true,
+        status: ProductStatus.PUBLISHED,
+        categories: {
+          some: { categoryId },
+          none: {
+            categoryId: { not: categoryId },
+            category: { isActive: true },
+          },
+        },
       },
     });
-    if (!active)
-      throw new BadRequestException(
-        'Published product must have at least one active category',
+    if (dependentProducts)
+      throw new ConflictException(
+        'Category is the last active category of one or more published products',
       );
   }
 
@@ -423,10 +424,20 @@ export class ProductsService {
     return slug;
   }
 
-  private toAdminProduct<T extends { price: { toString(): string } | null }>(
-    product: T,
-  ) {
-    return { ...product, price: product.price?.toString() ?? null };
+  private toAdminProduct<
+    T extends {
+      price: { toString(): string } | null;
+      images: Array<{ id: string }>;
+    },
+  >(product: T) {
+    return {
+      ...product,
+      price: product.price?.toString() ?? null,
+      images: product.images.map((image) => ({
+        ...image,
+        url: `/api/v1/product-images/${image.id}`,
+      })),
+    };
   }
 
   private toPublicProduct<
@@ -434,12 +445,17 @@ export class ProductsService {
       price: { toString(): string } | null;
       showPrice: boolean;
       categories: Array<{ category: { isActive: boolean } }>;
+      images: Array<{ id: string }>;
     },
   >(product: T) {
     return {
       ...product,
       price: product.showPrice ? (product.price?.toString() ?? null) : null,
       categories: product.categories.filter((item) => item.category.isActive),
+      images: product.images.map((image) => ({
+        ...image,
+        url: `/api/v1/product-images/${image.id}`,
+      })),
     };
   }
 
