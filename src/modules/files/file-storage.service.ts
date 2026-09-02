@@ -82,6 +82,20 @@ export class FileStorageService {
     );
   }
 
+  async getContent(key: string) {
+    if (this.driver === 'local')
+      return { localPath: this.getLocalPath(key) } as const;
+    const object = await this.client!.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+    if (!object.Body) throw new Error('Stored file has no content');
+    const bytes = await object.Body.transformToByteArray();
+    return {
+      buffer: Buffer.from(bytes),
+      contentType: object.ContentType ?? 'application/octet-stream',
+    } as const;
+  }
+
   getLocalPath(key: string) {
     return join(this.localDirectory, key);
   }

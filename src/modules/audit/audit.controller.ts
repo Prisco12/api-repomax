@@ -38,6 +38,11 @@ export class AuditController {
     maximum: 100,
   })
   @ApiQuery({ name: 'actorId', required: false })
+  @ApiQuery({
+    name: 'actorEmail',
+    required: false,
+    description: 'Trecho do e-mail do usuário responsável.',
+  })
   @ApiQuery({ name: 'action', required: false, example: 'AUTH_LOGIN_SUCCESS' })
   @ApiQuery({ name: 'resource', required: false, example: 'auth' })
   @ApiQuery({ name: 'status', required: false, enum: ['SUCCESS', 'FAILURE'] })

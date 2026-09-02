@@ -107,7 +107,7 @@ O prazo mínimo aceito é 30 dias. Em produção, comece com `AUDIT_RETENTION_DR
 
 ## CI e integração
 
-O workflow `.github/workflows/ci.yml` compila, executa lint e testes unitários em cada push e Pull Request. Depois sobe Docker, aplica migrations, executa seed e roda `npm run test:integration`. O cenário cria uma conta, confirma o e-mail, valida bloqueio pendente, rejeição e reconsideração pelo administrador, além de login, rotação e revogação do refresh cookie, troca de senha, `/users/me`, RBAC, auditoria, logout e rate limit. Localmente, com a API Docker em execução, migrations aplicadas e seed executado, use `docker compose exec -T api npm run test:integration`. A verificação curta anterior continua disponível em `npm run test:integration:smoke`.
+O workflow `.github/workflows/ci.yml` compila, executa lint e testes unitários em cada push e Pull Request. Depois sobe Docker, aplica migrations, executa seed e roda `npm run test:integration`. O cenário cria uma conta, confirma o e-mail, valida bloqueio pendente, rejeição e reconsideração pelo administrador, além de login, rotação e revogação do refresh cookie, troca de senha, `/users/me`, RBAC, auditoria, catálogo e o fluxo completo de imagens (upload, prévia, texto alternativo, ordem, leitura pública e exclusão), logout e rate limit. Localmente, com a API Docker em execução, migrations aplicadas e seed executado, use `docker compose exec -T api npm run test:integration`. A verificação curta anterior continua disponível em `npm run test:integration:smoke`.
 
 Ao copiar somente este template para um repositório novo, mantenha a pasta `.github/` que já está dentro dele. A CI standalone funciona sem os demais diretórios deste monorepo.
 

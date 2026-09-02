@@ -23,7 +23,7 @@ Prefixo: `/api/v1`. Respostas de sucesso usam `success`, `data` e `meta`.
 
 - `GET /users` (`users:read`)
 - `GET /users/approvals`, `PUT /users/:id/approval` (`users:approve`)
-- `GET /audit-logs` (`audit:read`)
+- `GET /audit-logs` (`audit:read`; aceita `actorEmail` por trecho e `actorId` exato)
 - `GET /rbac/roles` (`roles:manage` ou `roles:assign`)
 - `GET /rbac/permissions`, `POST /rbac/roles`, `PUT /rbac/roles/:name/permissions` (`roles:manage`)
 - `PUT /rbac/users/:userId/roles` (`roles:assign`)
@@ -37,6 +37,7 @@ Prefixo: `/api/v1`. Respostas de sucesso usam `success`, `data` e `meta`.
 - `PATCH /admin/products/:id/status` (`products:publish`)
 - `DELETE /admin/products/:id` (`products:delete`)
 - `POST /admin/products/:productId/images` (`products:update`, `multipart/form-data`, campo `file`)
+- `PATCH /admin/products/:productId/images/order` (`products:update`)
 - `PATCH /admin/products/:productId/images/:imageId` (`products:update`)
 - `DELETE /admin/products/:productId/images/:imageId` (`products:update`)
 
@@ -78,7 +79,24 @@ Exemplo de criação de produto:
 
 O `PUT /admin/products/:id` aceita `name`, `slug`, `sku`, `shortDescription`, `description`, `price`, `showPrice`, `isFeatured`, `sortOrder`, `specifications` e `categories`. Todos são opcionais; campos omitidos mantêm o valor atual. Quando `categories` é enviado, ele substitui a lista completa de categorias do produto. O status editorial é alterado separadamente pelo `PATCH /admin/products/:id/status`.
 
-Imagens são enviadas separadamente em `POST /admin/products/:productId/images`. São aceitas JPEG, PNG e WebP de até 5 MB. A primeira imagem vira principal automaticamente. O bucket S3 deve permanecer privado: `GET /product-images/:imageId` libera apenas imagens de produtos publicados e redireciona para uma URL temporária assinada.
+Imagens são enviadas em `POST /admin/products/:productId/images`. São aceitas JPEG, PNG e WebP de até 5 MB; o multipart também aceita `altText`. A primeira imagem vira principal automaticamente. `PATCH /admin/products/:productId/images/order` recebe todas as imagens na ordem desejada e salva ordem, imagem principal e textos alternativos em uma única transação. Ao excluir a principal, a próxima imagem é promovida automaticamente. O bucket S3 deve permanecer privado: `GET /product-images/:imageId` libera apenas imagens de produtos publicados e redireciona para uma URL temporária assinada.
+
+Exemplo de ordenação completa:
+
+```json
+{
+  "images": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "altText": "Amortecedor visto de frente"
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "altText": "Amortecedor visto de lado"
+    }
+  ]
+}
+```
 
 Preço é recebido e devolvido como string decimal. `showPrice=true` exige `price`. Slug omitido é gerado a partir do nome; alterar o nome depois não altera automaticamente o slug.
 

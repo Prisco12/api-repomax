@@ -67,6 +67,7 @@ const prettyLogs = process.env.LOG_PRETTY
             'req.headers.authorization',
             'req.headers.cookie',
             'res.headers.set-cookie',
+            'res.headers.location',
           ],
           censor: '[Redacted]',
         },

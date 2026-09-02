@@ -55,6 +55,32 @@ describe('ProductsService', () => {
     expect(prisma.product.findMany).not.toHaveBeenCalled();
   });
 
+  it('searches administrative products by slug', async () => {
+    prisma.product.findMany.mockResolvedValue([]);
+    prisma.product.count.mockResolvedValue(0);
+
+    await service.listAdmin({
+      page: 1,
+      limit: 20,
+      search: 'integration-product-1788368568222',
+    });
+
+    expect(prisma.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: expect.arrayContaining([
+            {
+              slug: {
+                contains: 'integration-product-1788368568222',
+                mode: 'insensitive',
+              },
+            },
+          ]),
+        },
+      }),
+    );
+  });
+
   it('does not publish a product without an active category', async () => {
     prisma.product.findUnique.mockResolvedValue({
       id: 'product-id',

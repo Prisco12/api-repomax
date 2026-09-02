@@ -153,3 +153,35 @@ Não é necessário configurar CORS no bucket neste modelo. O navegador envia o 
 2. Confirme que o objeto aparece no prefixo `products/` do bucket.
 3. Publique o produto e abra `GET /api/v1/product-images/:imageId` no navegador: ele deve redirecionar para uma URL temporária da AWS.
 4. Volte o produto a rascunho: essa mesma rota deve responder que a imagem não foi encontrada.
+
+O teste de integração da aplicação também cobre upload, leitura administrativa, leitura pública, texto alternativo, reordenação, promoção da próxima imagem e exclusão:
+
+```bash
+docker compose exec -T api npm run test:integration
+```
+
+Ele usa o driver configurado no container. Com `FILE_STORAGE_DRIVER=local`, valida o volume local; com `FILE_STORAGE_DRIVER=s3`, percorre o bucket real e a URL assinada.
+
+## 6. Confirmar a IAM Role em produção
+
+A API recusa `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` quando `NODE_ENV=production` e o driver é S3. Em produção, as credenciais devem vir da IAM Role associada ao serviço.
+
+Para App Runner, confirme a role configurada:
+
+```bash
+aws apprunner describe-service --service-arn SEU_SERVICE_ARN --query "Service.InstanceConfiguration.InstanceRoleArn" --output text
+```
+
+Para ECS/Fargate, confirme a **task role** da definição:
+
+```bash
+aws ecs describe-task-definition --task-definition SUA_TASK_DEFINITION --query "taskDefinition.taskRoleArn" --output text
+```
+
+Depois confira a policy anexada à role:
+
+```bash
+aws iam list-attached-role-policies --role-name NOME_DA_ROLE
+```
+
+O resultado deve conter `RepoMaxProductImagesS3Policy`. A confirmação funcional final é executar o teste de integração no mesmo ambiente da API; sucesso no upload e na visualização comprova que o SDK recebeu credenciais temporárias da role e que `GetObject`, `PutObject` e `DeleteObject` estão funcionando.
