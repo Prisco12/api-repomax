@@ -580,6 +580,63 @@
           }
         },
         {
+          "name": "Upload product image",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.id) pm.collectionVariables.set('productImageId', body.data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "JPEG, PNG ou WebP de até 5 MB."
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/admin/products/{{productId}}/images"
+          }
+        },
+        {
+          "name": "Update product image",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"altText\": \"Amortecedor dianteiro, vista lateral\",\n  \"sortOrder\": 0,\n  \"isPrimary\": true\n}"
+            },
+            "url": "{{baseUrl}}/admin/products/{{productId}}/images/{{productImageId}}"
+          }
+        },
+        {
+          "name": "Delete product image",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/admin/products/{{productId}}/images/{{productImageId}}"
+          }
+        },
+        {
           "name": "Archive product",
           "request": {
             "method": "DELETE",

@@ -22,6 +22,11 @@ export class ListAuditLogsDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(320)
+  actorEmail?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(100)
   action?: string;
 

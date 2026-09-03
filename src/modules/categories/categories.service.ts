@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ConflictException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -12,7 +14,7 @@ import { createPaginatedResult } from '../../common/types/pagination';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { ListAdminCategoriesDto } from './dto/list-admin-categories.dto';
-import { ProductStatus } from '../../generated/prisma/enums';
+import { ProductsService } from '../products/products.service';
 
 const categorySelect = {
   id: true,
@@ -31,6 +33,8 @@ export class CategoriesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Inject(forwardRef(() => ProductsService))
+    private readonly productsService: ProductsService,
   ) {}
 
   async listPublic() {
@@ -163,7 +167,7 @@ export class CategoriesService {
     if (dto.parentId !== undefined) await this.validateParent(dto.parentId, id);
     if (dto.isActive === false && before.isActive) {
       await this.ensureNoActiveDescendants(id);
-      await this.ensureCanDeactivate(id);
+      await this.productsService.ensureCategoryCanBeDeactivated(id);
     }
     const data = {
       ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
@@ -200,7 +204,7 @@ export class CategoriesService {
     const before = await this.findAdminById(id);
     if (!isActive && before.isActive) {
       await this.ensureNoActiveDescendants(id);
-      await this.ensureCanDeactivate(id);
+      await this.productsService.ensureCategoryCanBeDeactivated(id);
     }
     const category = await this.prisma.category.update({
       where: { id },
@@ -259,22 +263,26 @@ export class CategoriesService {
       throw new BadRequestException('Category hierarchy is too deep');
   }
 
-  private async ensureCanDeactivate(id: string) {
-    const dependentProducts = await this.prisma.product.count({
-      where: {
-        status: ProductStatus.PUBLISHED,
-        categories: {
-          some: { categoryId: id },
-          none: {
-            categoryId: { not: id },
-            category: { isActive: true },
-          },
-        },
-      },
+  async ensureCategoriesExist(categoryIds: string[]) {
+    if (!categoryIds.length) return;
+    const count = await this.prisma.category.count({
+      where: { id: { in: categoryIds } },
     });
-    if (dependentProducts)
-      throw new ConflictException(
-        'Category is the last active category of one or more published products',
+    if (count !== categoryIds.length)
+      throw new NotFoundException('One or more categories were not found');
+  }
+
+  async ensureHasActiveCategory(categoryIds: string[]) {
+    if (!categoryIds.length)
+      throw new BadRequestException(
+        'Published product must have at least one active category',
+      );
+    const active = await this.prisma.category.count({
+      where: { id: { in: categoryIds }, isActive: true },
+    });
+    if (!active)
+      throw new BadRequestException(
+        'Published product must have at least one active category',
       );
   }
 

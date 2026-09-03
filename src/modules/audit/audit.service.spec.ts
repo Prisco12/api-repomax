@@ -6,6 +6,7 @@ describe('AuditService', () => {
   const prisma = {
     $transaction: jest.fn(),
     auditLog: { findMany: jest.fn(), count: jest.fn(), create: jest.fn() },
+    user: { findMany: jest.fn() },
   };
   let service: AuditService;
 
@@ -37,6 +38,9 @@ describe('AuditService', () => {
       },
     ]);
     prisma.auditLog.count.mockResolvedValue(7);
+    prisma.user.findMany.mockResolvedValue([
+      { id: 'admin-id', email: 'admin@example.com' },
+    ]);
 
     const result = await service.list(2, 3, { status: 'SUCCESS' });
 
@@ -47,6 +51,7 @@ describe('AuditService', () => {
       data: [
         {
           id: 'log-id',
+          actor: { id: 'admin-id', email: 'admin@example.com' },
           before: { exists: false },
           after: { name: 'manager' },
         },
@@ -60,6 +65,39 @@ describe('AuditService', () => {
         hasPreviousPage: true,
       },
     });
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['admin-id'] } },
+      select: { id: true, email: true },
+    });
+  });
+
+  it('não consulta usuários quando os eventos foram gerados pelo sistema', async () => {
+    prisma.auditLog.findMany.mockResolvedValue([]);
+    prisma.auditLog.count.mockResolvedValue(0);
+
+    await service.list(1, 20, {});
+
+    expect(prisma.user.findMany).not.toHaveBeenCalled();
+  });
+
+  it('filtra os eventos por trecho do e-mail do ator', async () => {
+    prisma.user.findMany.mockResolvedValueOnce([{ id: 'admin-id' }]);
+    prisma.auditLog.findMany.mockResolvedValue([]);
+    prisma.auditLog.count.mockResolvedValue(0);
+
+    await service.list(1, 20, { actorEmail: 'ADMIN@EXAMPLE' });
+
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: {
+        email: { contains: 'ADMIN@EXAMPLE', mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
+    expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { actorId: { in: ['admin-id'] } },
+      }),
+    );
   });
 
   it('inclui o contexto da requisição em registros de auditoria', async () => {

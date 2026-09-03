@@ -19,7 +19,15 @@ describe('ProductsService', () => {
     $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
   };
   const audit = { record: jest.fn() };
-  const service = new ProductsService(prisma as never, audit as never);
+  const categories = {
+    ensureCategoriesExist: jest.fn(),
+    ensureHasActiveCategory: jest.fn(),
+  };
+  const service = new ProductsService(
+    prisma as never,
+    audit as never,
+    categories as never,
+  );
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -72,6 +80,32 @@ describe('ProductsService', () => {
     expect(prisma.productCategory.findMany).not.toHaveBeenCalled();
   });
 
+  it('searches administrative products by slug', async () => {
+    prisma.product.findMany.mockResolvedValue([]);
+    prisma.product.count.mockResolvedValue(0);
+
+    await service.listAdmin({
+      page: 1,
+      limit: 20,
+      search: 'integration-product-1788368568222',
+    });
+
+    expect(prisma.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: expect.arrayContaining([
+            {
+              slug: {
+                contains: 'integration-product-1788368568222',
+                mode: 'insensitive',
+              },
+            },
+          ]),
+        },
+      }),
+    );
+  });
+
   it('does not publish a product without an active category', async () => {
     prisma.product.findUnique.mockResolvedValue({
       id: 'product-id',
@@ -82,10 +116,14 @@ describe('ProductsService', () => {
       categories: [],
       images: [],
     });
+    categories.ensureHasActiveCategory.mockRejectedValueOnce(
+      new BadRequestException(),
+    );
 
     await expect(
       service.setStatus('product-id', ProductStatus.PUBLISHED, 'actor-id'),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(categories.ensureHasActiveCategory).toHaveBeenCalledWith([]);
     expect(prisma.product.update).not.toHaveBeenCalled();
   });
 
@@ -110,7 +148,7 @@ describe('ProductsService', () => {
       categories: [category],
       images: [],
     });
-    prisma.category.count.mockResolvedValue(1);
+    categories.ensureHasActiveCategory.mockResolvedValue(undefined);
     prisma.product.update.mockResolvedValue({
       id: 'product-id',
       status: ProductStatus.PUBLISHED,
@@ -124,6 +162,9 @@ describe('ProductsService', () => {
 
     await service.setStatus('product-id', ProductStatus.PUBLISHED, 'actor-id');
 
+    expect(categories.ensureHasActiveCategory).toHaveBeenCalledWith([
+      'category-id',
+    ]);
     expect(prisma.product.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

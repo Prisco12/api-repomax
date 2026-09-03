@@ -2,5 +2,6 @@ node_modules
 dist
 .env
 coverage
+performance/results
 npm-debug.log
 src/generated

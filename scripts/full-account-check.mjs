@@ -4,12 +4,17 @@ const email = `integration-${Date.now()}@example.test`;
 const firstPassword = 'Integration123!';
 const newPassword = 'ChangedIntegration123!';
 
-const request = (path, options = {}) =>
-  fetch(`${api}${path}`, {
+const request = (path, options = {}) => {
+  const headers = { ...(options.headers ?? {}) };
+  if (options.body && !(options.body instanceof FormData)) {
+    headers['content-type'] ??= 'application/json';
+  }
+  return fetch(`${api}${path}`, {
     ...options,
-    signal: AbortSignal.timeout(5_000),
-    headers: { 'content-type': 'application/json', ...(options.headers ?? {}) },
+    signal: AbortSignal.timeout(10_000),
+    headers,
   });
+};
 
 const expectStatus = async (response, status, label) => {
   if (response.status !== status) {
@@ -272,6 +277,56 @@ await expectStatus(productResponse, 201, 'create product');
 const productId = (await productResponse.json()).data?.id;
 if (!productId) throw new Error('create product: id was not returned');
 
+const png = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+);
+const uploadImage = async (name, altText) => {
+  const form = new FormData();
+  form.append('file', new Blob([png], { type: 'image/png' }), name);
+  form.append('altText', altText);
+  const response = await request(`/admin/products/${productId}/images`, {
+    method: 'POST',
+    headers: adminAuth,
+    body: form,
+  });
+  await expectStatus(response, 201, `upload ${name}`);
+  const id = (await response.json()).data?.id;
+  if (!id) throw new Error(`upload ${name}: id was not returned`);
+  return id;
+};
+const firstImageId = await uploadImage(
+  'integration-front.png',
+  'Vista frontal',
+);
+const secondImageId = await uploadImage(
+  'integration-side.png',
+  'Vista lateral',
+);
+
+await expectStatus(
+  await request(`/admin/products/${productId}/images/order`, {
+    method: 'PATCH',
+    headers: adminAuth,
+    body: JSON.stringify({
+      images: [
+        { id: secondImageId, altText: 'Vista lateral principal' },
+        { id: firstImageId, altText: 'Vista frontal adicional' },
+      ],
+    }),
+  }),
+  200,
+  'reorder product images',
+);
+await expectStatus(
+  await request(
+    `/admin/products/${productId}/images/${secondImageId}/content`,
+    { headers: adminAuth },
+  ),
+  200,
+  'admin image preview',
+);
+
 await expectStatus(
   await request(`/products/${productSlug}`),
   404,
@@ -290,6 +345,40 @@ await expectStatus(
   await request(`/products/${productSlug}`),
   200,
   'published product detail',
+);
+await expectStatus(
+  await request(`/product-images/${secondImageId}`),
+  200,
+  'published product image',
+);
+await expectStatus(
+  await request(`/admin/products/${productId}/images/${secondImageId}`, {
+    method: 'DELETE',
+    headers: adminAuth,
+  }),
+  200,
+  'delete primary product image',
+);
+const productAfterImageDelete = await request(`/admin/products/${productId}`, {
+  headers: adminAuth,
+});
+await expectStatus(productAfterImageDelete, 200, 'product after image delete');
+const remainingImages = (await productAfterImageDelete.json()).data?.images;
+if (
+  remainingImages?.length !== 1 ||
+  remainingImages[0].id !== firstImageId ||
+  !remainingImages[0].isPrimary ||
+  remainingImages[0].sortOrder !== 0
+) {
+  throw new Error('delete primary image: next image was not promoted');
+}
+await expectStatus(
+  await request(`/admin/products/${productId}/images/${firstImageId}`, {
+    method: 'DELETE',
+    headers: adminAuth,
+  }),
+  200,
+  'delete remaining product image',
 );
 await expectStatus(
   await request(`/products?category=${categorySlug}`),
@@ -325,6 +414,19 @@ const audit = await request(
 await expectStatus(audit, 200, 'audit');
 if (!(await audit.json()).data?.some((entry) => entry.resourceId === userId)) {
   throw new Error('audit: password reset event was not found');
+}
+
+const imageAudit = await request(
+  `/audit-logs?action=PRODUCT_IMAGE_DELETED&actorEmail=${encodeURIComponent(process.env.SEED_ADMIN_EMAIL)}&limit=20`,
+  { headers: adminAuth },
+);
+await expectStatus(imageAudit, 200, 'image audit filtered by actor email');
+if (
+  !(await imageAudit.json()).data?.some(
+    (entry) => entry.actor?.email === process.env.SEED_ADMIN_EMAIL,
+  )
+) {
+  throw new Error('audit: image event with actor email was not found');
 }
 
 await expectStatus(

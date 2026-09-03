@@ -26,6 +26,8 @@ services:
       MAIL_USER: ${MAIL_USER:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-NestJS API <no-reply@example.test>}
+    volumes:
+      - uploads_data:/app/uploads
     logging: *default-logging
 
   postgres:
@@ -68,3 +70,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:

@@ -18,9 +18,18 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:integration": "node scripts/full-account-check.mjs",
-    "test:integration:smoke": "node scripts/integration-check.mjs"
+    "test:integration:smoke": "node scripts/integration-check.mjs",
+    "perf:smoke": "node performance/run.mjs smoke small",
+    "perf:load:small": "node performance/run.mjs load small",
+    "perf:load:medium": "node performance/run.mjs load medium",
+    "perf:stress:small": "node performance/run.mjs stress small",
+    "perf:stress:medium": "node performance/run.mjs stress medium",
+    "perf:all": "node performance/suite.mjs",
+    "perf:report": "node performance/report.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1123.0",
+    "@aws-sdk/s3-request-presigner": "^3.1123.0",
     "@nest-lab/throttler-storage-redis": "^1.2.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
@@ -41,6 +50,7 @@
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@prometheus-io/client": "^0.16.0",
+    "@types/multer": "^2.2.0",
     "argon2": "^0.45.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",

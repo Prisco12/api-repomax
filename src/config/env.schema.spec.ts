@@ -21,4 +21,23 @@ describe('environment schema', () => {
       validateEnv({ ...required, AUDIT_RETENTION_DAYS: '29' }),
     ).toThrow();
   });
+
+  it('exige bucket quando o armazenamento usa S3', () => {
+    expect(() =>
+      validateEnv({ ...required, FILE_STORAGE_DRIVER: 's3' }),
+    ).toThrow(/AWS_S3_BUCKET/);
+  });
+
+  it('recusa credenciais estáticas do S3 em produção', () => {
+    expect(() =>
+      validateEnv({
+        ...required,
+        NODE_ENV: 'production',
+        FILE_STORAGE_DRIVER: 's3',
+        AWS_S3_BUCKET: 'repomax-products',
+        AWS_ACCESS_KEY_ID: 'access-key',
+        AWS_SECRET_ACCESS_KEY: 'secret-key',
+      }),
+    ).toThrow(/IAM role/);
+  });
 });

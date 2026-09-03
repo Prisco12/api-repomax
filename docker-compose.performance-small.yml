@@ -1,0 +1,14 @@
+# Simulates the application share of a small VPS (2 vCPU / 4 GB).
+# The remaining resources are reserved for the operating system and Docker.
+services:
+  api:
+    cpus: 0.9
+    mem_limit: 1g
+
+  postgres:
+    cpus: 0.8
+    mem_limit: 2g
+
+  redis:
+    cpus: 0.2
+    mem_limit: 256m
