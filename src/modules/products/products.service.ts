@@ -120,8 +120,9 @@ export class ProductsService {
   }
 
   private async listPublicByCategory(filters: ListProductsDto) {
+    const categoryId = await this.findVisibleCategoryId(filters.category!);
     const where: Prisma.ProductCategoryWhereInput = {
-      category: { slug: filters.category, isActive: true },
+      categoryId,
       product: {
         status: ProductStatus.PUBLISHED,
         ...(filters.featured !== undefined
@@ -388,6 +389,26 @@ export class ProductsService {
       throw new BadRequestException(
         'Published product must have at least one active category',
       );
+  }
+
+  private async findVisibleCategoryId(slug: string) {
+    let category = await this.prisma.category.findUnique({
+      where: { slug },
+      select: { id: true, parentId: true, isActive: true },
+    });
+    if (!category?.isActive) throw new NotFoundException('Category not found');
+    const categoryId = category.id;
+    for (let depth = 0; category.parentId && depth < 100; depth += 1) {
+      category = await this.prisma.category.findUnique({
+        where: { id: category.parentId },
+        select: { id: true, parentId: true, isActive: true },
+      });
+      if (!category?.isActive)
+        throw new NotFoundException('Category not found');
+    }
+    if (category.parentId)
+      throw new BadRequestException('Category hierarchy is too deep');
+    return categoryId;
   }
 
   private validatePrice(price: string | null | undefined, showPrice: boolean) {

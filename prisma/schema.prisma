@@ -123,6 +123,7 @@ model Category {
   updatedAt DateTime @updatedAt
 
   @@index([parentId, isActive, sortOrder])
+  @@index([isActive, sortOrder])
 }
 
 model Product {

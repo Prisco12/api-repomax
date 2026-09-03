@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ProductStatus } from '../../generated/prisma/enums';
 import { ProductsService } from './products.service';
 
@@ -15,7 +15,7 @@ describe('ProductsService', () => {
       findMany: jest.fn(),
       count: jest.fn(),
     },
-    category: { count: jest.fn() },
+    category: { count: jest.fn(), findUnique: jest.fn() },
     $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
   };
   const audit = { record: jest.fn() };
@@ -31,6 +31,11 @@ describe('ProductsService', () => {
   });
 
   it('uses the category-specific order when a category filter is present', async () => {
+    prisma.category.findUnique.mockResolvedValue({
+      id: 'category-id',
+      parentId: null,
+      isActive: true,
+    });
     prisma.productCategory.findMany.mockResolvedValue([]);
     prisma.productCategory.count.mockResolvedValue(0);
 
@@ -46,6 +51,25 @@ describe('ProductsService', () => {
       }),
     );
     expect(prisma.product.findMany).not.toHaveBeenCalled();
+  });
+
+  it('hides products from a category with an inactive ancestor', async () => {
+    prisma.category.findUnique
+      .mockResolvedValueOnce({
+        id: 'child-id',
+        parentId: 'parent-id',
+        isActive: true,
+      })
+      .mockResolvedValueOnce({
+        id: 'parent-id',
+        parentId: null,
+        isActive: false,
+      });
+
+    await expect(
+      service.listPublic({ page: 1, limit: 20, category: 'child' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.productCategory.findMany).not.toHaveBeenCalled();
   });
 
   it('does not publish a product without an active category', async () => {
