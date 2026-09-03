@@ -1,8 +1,9 @@
 # Performance tests
 
 This suite runs [Grafana k6](https://grafana.com/docs/k6/latest/) in Docker,
-samples CPU and memory from the API, PostgreSQL and Redis containers, and builds
-individual and comparative HTML reports.
+samples CPU and memory from the Caddy/frontend, API, PostgreSQL, Redis,
+Prometheus, Grafana, Loki, Tempo and Alloy containers, and builds individual
+and comparative HTML reports.
 
 It is a local capacity estimate. CPU model, disk latency, network and resource
 sharing on the real VPS will differ, so repeat the same tests on the chosen VPS
@@ -13,13 +14,41 @@ before production.
 - Docker Desktop running with at least 4 CPUs and 8 GB of memory assigned when
   testing the medium profile.
 - A valid `.env` based on `.env.example`.
-- Free local port configured by `PORT` (default: `3000`).
+- Free local ports `PORT` for direct API access (default: `3000`) and
+  `PERF_HTTP_PORT` for Caddy/frontend (default: `8080`).
 
-The runner starts PostgreSQL, Redis and Mailpit, builds the API, applies Prisma
-migrations and runs the existing idempotent seeds before generating load. It
-does not delete the development database when it finishes.
+The runner starts PostgreSQL, Redis, Mailpit and the complete observability
+stack, builds the API and frontend, applies Prisma migrations and runs the
+existing idempotent seeds before generating load. k6 calls
+`http://localhost:8080/api/v1` through Caddy, matching the same-origin route
+intended for the VPS. It does not delete the development database when it
+finishes.
+
+The performance Compose profiles raise `RATE_LIMIT_MAX` to `1000000` only in
+the test containers. k6 originates from one IP, so the normal per-IP limit of
+100 requests per minute would measure `429 Too Many Requests` responses instead
+of API capacity. The regular development and production configurations remain
+unchanged. Use a separate functional test to validate throttling behavior.
 
 ## Commands
+
+Create the realistic dataset before comparing VPS profiles:
+
+```powershell
+npm run perf:seed -- --products=10000 --categories=100
+```
+
+The seed is idempotent and creates records with reserved `repomax-perf-*` slugs
+and `PERF-*` SKUs. It generates 70% published, 20% draft and 10% archived
+products, two to five category relationships per product and two image metadata
+rows for 30% of products. Image metadata exercises product relations and list
+payloads; it does not upload synthetic binary files to local storage or S3.
+
+Remove only the generated performance records:
+
+```powershell
+npm run perf:cleanup
+```
 
 Run a short connectivity and authentication check against the small profile:
 
@@ -47,6 +76,18 @@ Run smoke plus both normal workload profiles sequentially:
 npm run perf:all
 ```
 
+After a scenario leaves the stack running, create a temporary PostgreSQL backup
+while continuously checking API readiness:
+
+```powershell
+npm run perf:backup-check
+```
+
+The check reports backup size, readiness failures and worst readiness latency,
+then removes the temporary dump from the database container. This verifies
+coexistence with a local backup operation; production restores still need to be
+tested separately on a disposable database.
+
 Rebuild the comparison from existing results without running k6:
 
 ```powershell
@@ -63,12 +104,27 @@ performance/results/comparison.html
 The raw `k6-summary.json`, `resources.json`, `metadata.json` and `result.json`
 files remain beside every individual report for inspection.
 
+Every individual report contains:
+
+- CPU and RAM for Caddy/frontend, API, PostgreSQL, Redis, Prometheus, Grafana,
+  Loki, Tempo and Alloy;
+- CPU after the load and memory growth from first to last sample;
+- PostgreSQL database, table and index sizes;
+- PostgreSQL connections and configured maximum;
+- frontend build, application and observability persistent volumes, and current
+  service image sizes;
+- configured Docker log ceiling;
+- local host disk use with warning at 70% and critical state at 85%;
+- API readiness immediately after the load.
+
 ## Workload
 
-Every virtual user accesses the public product and category lists. When
-`SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` are available, setup authenticates
-once and the same users also access the administrative product and category
-lists. Successful login is not repeated during the measured workload.
+Every virtual user accesses public product lists, product searches and category
+lists through Caddy. Searches rotate between product name, SKU and slug terms.
+When `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` are available, setup
+authenticates once and the same users also access administrative product lists,
+searches and category lists. Successful login is not repeated during the
+measured workload.
 
 Set `PERF_PRODUCT_SLUG` to include a published product detail in every iteration:
 
@@ -139,5 +195,5 @@ guarantee identical capacity at a hosting provider.
 To stop the stack without deleting PostgreSQL data:
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.performance-small.yml down
+docker compose -f docker-compose.yml -f docker-compose.performance.yml -f docker-compose.observability.yml -f docker-compose.performance-small.yml down
 ```

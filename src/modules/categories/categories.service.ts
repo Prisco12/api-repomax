@@ -103,16 +103,40 @@ export class CategoriesService {
         where,
         skip: (filters.page - 1) * filters.limit,
         take: filters.limit,
-        select: {
-          ...categorySelect,
-          _count: { select: { children: true, products: true } },
-        },
+        select: categorySelect,
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       }),
       this.prisma.category.count({ where }),
     ]);
+    const categoryIds = categories.map((category) => category.id);
+    const [productCounts, childrenCounts] = categoryIds.length
+      ? await Promise.all([
+          this.prisma.productCategory.groupBy({
+            by: ['categoryId'],
+            where: { categoryId: { in: categoryIds } },
+            _count: { _all: true },
+          }),
+          this.prisma.category.groupBy({
+            by: ['parentId'],
+            where: { parentId: { in: categoryIds } },
+            _count: { _all: true },
+          }),
+        ])
+      : [[], []];
+    const productsByCategory = new Map(
+      productCounts.map((item) => [item.categoryId, item._count._all]),
+    );
+    const childrenByCategory = new Map(
+      childrenCounts.map((item) => [item.parentId, item._count._all]),
+    );
     return createPaginatedResult(
-      categories,
+      categories.map((category) => ({
+        ...category,
+        _count: {
+          products: productsByCategory.get(category.id) ?? 0,
+          children: childrenByCategory.get(category.id) ?? 0,
+        },
+      })),
       filters.page,
       filters.limit,
       totalItems,

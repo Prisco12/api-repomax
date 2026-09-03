@@ -25,7 +25,10 @@
     "perf:stress:small": "node performance/run.mjs stress small",
     "perf:stress:medium": "node performance/run.mjs stress medium",
     "perf:all": "node performance/suite.mjs",
-    "perf:report": "node performance/report.mjs"
+    "perf:report": "node performance/report.mjs",
+    "perf:seed": "node performance/data-command.mjs seed",
+    "perf:cleanup": "node performance/data-command.mjs cleanup",
+    "perf:backup-check": "node performance/backup-check.mjs medium"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1123.0",

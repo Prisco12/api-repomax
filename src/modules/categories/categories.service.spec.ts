@@ -7,9 +7,13 @@ describe('CategoriesService', () => {
       create: jest.fn(),
       findUnique: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
+      groupBy: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
     },
+    productCategory: { groupBy: jest.fn() },
+    $transaction: jest.fn((operations: unknown[]) => Promise.all(operations)),
   };
   const audit = { record: jest.fn() };
   const products = { ensureCategoryCanBeDeactivated: jest.fn() };
@@ -20,6 +24,30 @@ describe('CategoriesService', () => {
   );
 
   beforeEach(() => jest.clearAllMocks());
+
+  it('counts usage only for categories on the requested page', async () => {
+    prisma.category.findMany.mockResolvedValue([
+      { id: 'category-id', name: 'Suspensão' },
+    ]);
+    prisma.category.count.mockResolvedValue(1);
+    prisma.productCategory.groupBy.mockResolvedValue([
+      { categoryId: 'category-id', _count: { _all: 4 } },
+    ]);
+    prisma.category.groupBy.mockResolvedValue([
+      { parentId: 'category-id', _count: { _all: 2 } },
+    ]);
+
+    const result = await service.listAdmin({ page: 1, limit: 20 });
+
+    expect(prisma.productCategory.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { categoryId: { in: ['category-id'] } },
+      }),
+    );
+    expect(result.data[0]).toMatchObject({
+      _count: { products: 4, children: 2 },
+    });
+  });
 
   it('normalizes the generated slug and audits creation', async () => {
     prisma.category.create.mockResolvedValue({

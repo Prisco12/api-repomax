@@ -12,6 +12,17 @@ const rootDirectory = path.resolve(
   '..',
 );
 const performanceDirectory = path.join(rootDirectory, 'performance');
+const trackedServices = [
+  'web',
+  'api',
+  'postgres',
+  'redis',
+  'prometheus',
+  'grafana',
+  'loki',
+  'tempo',
+  'alloy',
+];
 const scenario = process.argv[2] || 'smoke';
 const profileName = process.argv[3] || 'small';
 const skipStackStart =
@@ -109,6 +120,10 @@ const composeArgs = (extra = []) => [
   '-f',
   'docker-compose.yml',
   '-f',
+  'docker-compose.performance.yml',
+  '-f',
+  'docker-compose.observability.yml',
+  '-f',
   profile.composeFile,
   ...extra,
 ];
@@ -122,7 +137,9 @@ async function prepareStack(environment) {
       env: environment,
     },
   );
-  await run('docker', composeArgs(['build', 'api']), { env: environment });
+  await run('docker', composeArgs(['build', 'api', 'web']), {
+    env: environment,
+  });
   await run(
     'docker',
     composeArgs([
@@ -142,7 +159,9 @@ async function prepareStack(environment) {
     composeArgs(['run', '--rm', '--no-deps', 'api', 'npm', 'run', 'seed']),
     { env: environment },
   );
-  await run('docker', composeArgs(['up', '-d', 'api']), { env: environment });
+  await run('docker', composeArgs(['up', '-d', ...trackedServices]), {
+    env: environment,
+  });
 }
 
 async function waitForApi(baseUrl) {
@@ -164,7 +183,7 @@ async function waitForApi(baseUrl) {
 
 async function serviceContainers(environment) {
   const entries = await Promise.all(
-    ['api', 'postgres', 'redis'].map(async (service) => {
+    trackedServices.map(async (service) => {
       const result = await run('docker', composeArgs(['ps', '-q', service]), {
         capture: true,
         env: environment,
@@ -241,6 +260,96 @@ async function sampleResources(containers, environment) {
   return { timestamp: new Date().toISOString(), services };
 }
 
+async function sampleDatabaseConnections(containers, environment) {
+  const postgresId = Object.entries(containers).find(
+    ([, service]) => service === 'postgres',
+  )?.[0];
+  if (!postgresId) return null;
+  const databaseName = environment.POSTGRES_DB || 'nest_api';
+  const databaseUser = environment.POSTGRES_USER || 'postgres';
+  const query = `SELECT json_build_object(
+    'total', COUNT(*) FILTER (WHERE pid <> pg_backend_pid()),
+    'active', COUNT(*) FILTER (WHERE pid <> pg_backend_pid() AND state = 'active'),
+    'waiting', COUNT(*) FILTER (WHERE pid <> pg_backend_pid() AND state <> 'idle' AND wait_event_type IS NOT NULL),
+    'maximum', (SELECT setting::int FROM pg_settings WHERE name = 'max_connections')
+  )::text FROM pg_stat_activity WHERE datname = current_database();`;
+  const result = await run(
+    'docker',
+    [
+      'exec',
+      postgresId,
+      'psql',
+      '-U',
+      databaseUser,
+      '-d',
+      databaseName,
+      '-At',
+      '-c',
+      query,
+    ],
+    { capture: true, allowFailure: true, env: environment },
+  );
+  if (result.code !== 0 || !result.stdout) return null;
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    return null;
+  }
+}
+
+async function collectDatabaseActivity(containers, environment) {
+  const postgresId = Object.entries(containers).find(
+    ([, service]) => service === 'postgres',
+  )?.[0];
+  if (!postgresId) return {};
+  const databaseName = environment.POSTGRES_DB || 'nest_api';
+  const databaseUser = environment.POSTGRES_USER || 'postgres';
+  const query = `SELECT COALESCE(json_object_agg(relname, json_build_object(
+    'sequentialScans', seq_scan,
+    'rowsReadSequentially', seq_tup_read,
+    'indexScans', idx_scan,
+    'rowsFetchedByIndex', idx_tup_fetch
+  )), '{}'::json)::text
+  FROM pg_stat_user_tables
+  WHERE relname IN ('Product', 'ProductCategory', 'ProductImage', 'Category');`;
+  const result = await run(
+    'docker',
+    [
+      'exec',
+      postgresId,
+      'psql',
+      '-U',
+      databaseUser,
+      '-d',
+      databaseName,
+      '-At',
+      '-c',
+      query,
+    ],
+    { capture: true, allowFailure: true, env: environment },
+  );
+  if (result.code !== 0 || !result.stdout) return {};
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    return {};
+  }
+}
+
+function databaseActivityDifference(before, after) {
+  return Object.fromEntries(
+    Object.entries(after).map(([table, values]) => [
+      table,
+      Object.fromEntries(
+        Object.entries(values).map(([metricName, value]) => [
+          metricName,
+          Math.max(0, Number(value) - Number(before[table]?.[metricName] || 0)),
+        ]),
+      ),
+    ]),
+  );
+}
+
 function average(values) {
   return values.length
     ? values.reduce((sum, value) => sum + value, 0) / values.length
@@ -249,7 +358,7 @@ function average(values) {
 
 function summarizeResources(samples) {
   const services = {};
-  for (const service of ['api', 'postgres', 'redis']) {
+  for (const service of trackedServices) {
     const values = samples
       .map((sample) => sample.services[service])
       .filter(Boolean);
@@ -275,8 +384,36 @@ function summarizeResources(samples) {
     ),
   );
   const memoryCapacity = profile.totalMemoryGb * 1024 ** 3;
+  const endingSamples = samples.slice(-3);
+  const endingCpu = endingSamples.map((sample) =>
+    Object.values(sample.services).reduce(
+      (sum, value) => sum + value.cpuPercent,
+      0,
+    ),
+  );
+  const firstMemory = totalMemory[0] || 0;
+  const lastMemory = totalMemory.at(-1) || 0;
+  const databaseConnections = samples
+    .map((sample) => sample.databaseConnections)
+    .filter(Boolean);
+  const connectionValues = (field) =>
+    databaseConnections.map((connections) => Number(connections[field]) || 0);
+  const totalConnections = connectionValues('total');
+  const activeConnections = connectionValues('active');
+  const waitingConnections = connectionValues('waiting');
   return {
     services,
+    databaseConnections: {
+      averageTotal: average(totalConnections),
+      maximumTotal: totalConnections.length ? Math.max(...totalConnections) : 0,
+      maximumActive: activeConnections.length
+        ? Math.max(...activeConnections)
+        : 0,
+      maximumWaiting: waitingConnections.length
+        ? Math.max(...waitingConnections)
+        : 0,
+      configuredMaximum: databaseConnections.at(-1)?.maximum || 0,
+    },
     total: {
       normalizedCpuAveragePercent: average(totalCpu) / profile.totalVcpu,
       normalizedCpuMaxPercent:
@@ -286,6 +423,144 @@ function summarizeResources(samples) {
       memoryMaxPercent:
         ((totalMemory.length ? Math.max(...totalMemory) : 0) / memoryCapacity) *
         100,
+      endingNormalizedCpuPercent: average(endingCpu) / profile.totalVcpu,
+      memoryGrowthBytes: lastMemory - firstMemory,
+      memoryGrowthPercent:
+        firstMemory > 0 ? ((lastMemory - firstMemory) / firstMemory) * 100 : 0,
+    },
+  };
+}
+
+async function commandBytes(containerId, target, environment) {
+  const result = await run(
+    'docker',
+    ['exec', containerId, 'du', '-sk', target],
+    {
+      capture: true,
+      allowFailure: true,
+      env: environment,
+    },
+  );
+  if (result.code !== 0) return 0;
+  return (Number.parseFloat(result.stdout.split(/\s+/)[0]) || 0) * 1024;
+}
+
+async function collectStorage(containers, environment) {
+  const postgresId = Object.entries(containers).find(
+    ([, service]) => service === 'postgres',
+  )?.[0];
+  const webId = Object.entries(containers).find(
+    ([, service]) => service === 'web',
+  )?.[0];
+  const databaseName = environment.POSTGRES_DB || 'nest_api';
+  const databaseUser = environment.POSTGRES_USER || 'postgres';
+  const databaseQuery = `SELECT json_build_object(
+    'databaseBytes', pg_database_size(current_database()),
+    'tableBytes', COALESCE((SELECT SUM(pg_table_size(quote_ident(schemaname) || '.' || quote_ident(tablename))) FROM pg_tables WHERE schemaname = 'public'), 0),
+    'indexBytes', COALESCE((SELECT SUM(pg_indexes_size(quote_ident(schemaname) || '.' || quote_ident(tablename))) FROM pg_tables WHERE schemaname = 'public'), 0)
+    , 'activeConnections', (SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database())
+    , 'maxConnections', (SELECT setting::int FROM pg_settings WHERE name = 'max_connections')
+  )::text;`;
+  const databaseResult = postgresId
+    ? await run(
+        'docker',
+        [
+          'exec',
+          postgresId,
+          'psql',
+          '-U',
+          databaseUser,
+          '-d',
+          databaseName,
+          '-At',
+          '-c',
+          databaseQuery,
+        ],
+        { capture: true, allowFailure: true, env: environment },
+      )
+    : null;
+  let database = {};
+  try {
+    database = JSON.parse(databaseResult?.stdout || '{}');
+  } catch {
+    database = {
+      collectionError: databaseResult?.stderr || 'Invalid psql output',
+    };
+  }
+
+  const volumes = {};
+  const volumeTargets = {
+    api: '/app/uploads',
+    postgres: '/var/lib/postgresql/data',
+    redis: '/data',
+    prometheus: '/prometheus',
+    grafana: '/var/lib/grafana',
+    loki: '/loki',
+    tempo: '/var/tempo',
+  };
+  for (const [containerId, service] of Object.entries(containers)) {
+    const target = volumeTargets[service];
+    if (target)
+      volumes[service] = await commandBytes(containerId, target, environment);
+  }
+
+  const imageIds = {};
+  for (const [containerId, service] of Object.entries(containers)) {
+    const image = await run(
+      'docker',
+      ['inspect', '--format', '{{.Image}}', containerId],
+      { capture: true, allowFailure: true, env: environment },
+    );
+    if (image.stdout) imageIds[service] = image.stdout;
+  }
+  const uniqueImageSizes = {};
+  for (const imageId of new Set(Object.values(imageIds))) {
+    const size = await run(
+      'docker',
+      ['image', 'inspect', '--format', '{{.Size}}', imageId],
+      { capture: true, allowFailure: true, env: environment },
+    );
+    uniqueImageSizes[imageId] = Number(size.stdout) || 0;
+  }
+  const imagesByService = Object.fromEntries(
+    Object.entries(imageIds).map(([service, imageId]) => [
+      service,
+      uniqueImageSizes[imageId] || 0,
+    ]),
+  );
+
+  const fileSystem = await fs.statfs(rootDirectory);
+  const hostTotalBytes = Number(fileSystem.blocks) * Number(fileSystem.bsize);
+  const hostFreeBytes = Number(fileSystem.bavail) * Number(fileSystem.bsize);
+  return {
+    database,
+    frontendBuildBytes: webId
+      ? await commandBytes(webId, '/srv/frontend', environment)
+      : 0,
+    volumes,
+    dockerImages: {
+      byService: imagesByService,
+      uniqueTotalBytes: Object.values(uniqueImageSizes).reduce(
+        (sum, size) => sum + size,
+        0,
+      ),
+      note: 'Service image sizes can share Docker layers; the unique total counts each image once.',
+    },
+    logs: {
+      configuredMaxPerContainerBytes: 20 * 1024 ** 2 * 5,
+      trackedContainers: trackedServices.length,
+      configuredMaxTotalBytes: 20 * 1024 ** 2 * 5 * trackedServices.length,
+    },
+    hostFilesystem: {
+      totalBytes: hostTotalBytes,
+      freeBytes: hostFreeBytes,
+      usedPercent:
+        hostTotalBytes > 0
+          ? ((hostTotalBytes - hostFreeBytes) / hostTotalBytes) * 100
+          : 0,
+      warningPercent: 70,
+      criticalPercent: 85,
+      note: 'Local host measurement; repeat on the VPS because Docker Desktop uses its own virtual disk.',
     },
   };
 }
@@ -301,7 +576,7 @@ function expectedMaxVirtualUsers(environment) {
 }
 
 const environment = await loadEnvironment();
-const hostPort = environment.PORT || '3000';
+const hostPort = environment.PERF_HTTP_PORT || '8080';
 const hostBaseUrl = (
   environment.PERF_BASE_URL || `http://localhost:${hostPort}/api/v1`
 ).replace(/\/$/, '');
@@ -313,6 +588,10 @@ if (!skipStackStart) await prepareStack(environment);
 await waitForApi(hostBaseUrl);
 
 const containers = await serviceContainers(environment);
+const databaseActivityBefore = await collectDatabaseActivity(
+  containers,
+  environment,
+);
 const resultDirectory = path.join(
   performanceDirectory,
   'results',
@@ -329,8 +608,11 @@ const collect = async () => {
   if (collecting) return;
   collecting = true;
   try {
-    const sample = await sampleResources(containers, environment);
-    if (sample) samples.push(sample);
+    const [sample, databaseConnections] = await Promise.all([
+      sampleResources(containers, environment),
+      sampleDatabaseConnections(containers, environment),
+    ]);
+    if (sample) samples.push({ ...sample, databaseConnections });
   } finally {
     collecting = false;
   }
@@ -375,7 +657,25 @@ clearInterval(interval);
 while (collecting) await new Promise((resolve) => setTimeout(resolve, 50));
 await collect();
 
-const resources = { samples, summary: summarizeResources(samples) };
+let postTestHealthy = false;
+try {
+  const response = await fetch(`${hostBaseUrl}/health/ready`, {
+    signal: AbortSignal.timeout(5_000),
+  });
+  postTestHealthy = response.ok;
+} catch {
+  postTestHealthy = false;
+}
+
+const resources = {
+  samples,
+  summary: summarizeResources(samples),
+  databaseActivity: databaseActivityDifference(
+    databaseActivityBefore,
+    await collectDatabaseActivity(containers, environment),
+  ),
+  storage: await collectStorage(containers, environment),
+};
 const metadata = {
   scenario,
   profile,
@@ -383,8 +683,10 @@ const metadata = {
   finishedAt: new Date().toISOString(),
   exitCode: k6Result.code,
   expectedMaxVirtualUsers: expectedMaxVirtualUsers(environment),
+  performanceRateLimitMax: Number(environment.PERF_RATE_LIMIT_MAX || 1_000_000),
   sampleIntervalMs: Number(environment.PERF_SAMPLE_INTERVAL_MS || 2_000),
   resourceSamples: samples.length,
+  postTestHealthy,
 };
 await Promise.all([
   fs.writeFile(

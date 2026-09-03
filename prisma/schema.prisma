@@ -148,7 +148,12 @@ model Product {
   updatedAt DateTime @updatedAt
 
   @@index([status, createdAt])
-  @@index([status, isFeatured, sortOrder])
+  @@index([createdAt(sort: Desc)], map: "Product_createdAt_desc_idx")
+  @@index([status, isFeatured(sort: Desc), sortOrder, createdAt(sort: Desc)], map: "Product_public_catalog_order_idx")
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Product_name_trgm_idx")
+  @@index([slug(ops: raw("gin_trgm_ops"))], type: Gin, map: "Product_slug_trgm_idx")
+  @@index([sku(ops: raw("gin_trgm_ops"))], type: Gin, map: "Product_sku_trgm_idx")
+  @@index([shortDescription(ops: raw("gin_trgm_ops"))], type: Gin, map: "Product_shortDescription_trgm_idx")
 }
 
 model ProductCategory {

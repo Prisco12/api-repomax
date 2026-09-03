@@ -19,6 +19,7 @@ services:
         condition: service_started
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/nest_api?schema=public
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
       REDIS_URL: redis://redis:6379
       MAIL_HOST: ${MAIL_HOST:-mailpit}
       MAIL_PORT: ${MAIL_PORT:-1025}

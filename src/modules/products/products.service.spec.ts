@@ -92,6 +92,12 @@ describe('ProductsService', () => {
 
     expect(prisma.product.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        include: expect.objectContaining({
+          images: expect.objectContaining({
+            where: { isPrimary: true },
+            take: 1,
+          }),
+        }),
         where: {
           OR: expect.arrayContaining([
             {

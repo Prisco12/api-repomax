@@ -1,5 +1,19 @@
 import http from 'k6/http';
 import { check, fail, group, sleep } from 'k6';
+import { Trend } from 'k6/metrics';
+
+const routeDuration = {
+  publicProducts: new Trend('route_public_products_duration', true),
+  publicSearchName: new Trend('route_public_search_name_duration', true),
+  publicSearchSku: new Trend('route_public_search_sku_duration', true),
+  publicSearchSlug: new Trend('route_public_search_slug_duration', true),
+  publicCategories: new Trend('route_public_categories_duration', true),
+  adminProducts: new Trend('route_admin_products_duration', true),
+  adminSearchName: new Trend('route_admin_search_name_duration', true),
+  adminSearchSku: new Trend('route_admin_search_sku_duration', true),
+  adminSearchSlug: new Trend('route_admin_search_slug_duration', true),
+  adminCategories: new Trend('route_admin_categories_duration', true),
+};
 
 const baseUrl = (
   __ENV.API_BASE_URL || 'http://host.docker.internal:3000/api/v1'
@@ -17,6 +31,11 @@ function expectOk(response, label) {
   check(response, {
     [`${label}: status 200`]: (result) => result.status === 200,
   });
+}
+
+function recordDuration(response, trend) {
+  trend.add(response.timings.duration);
+  return response;
 }
 
 export function setupSession() {
@@ -57,22 +76,43 @@ export function setupSession() {
 
 export function runScenario(data) {
   const page = ((__VU + __ITER) % 5) + 1;
+  const searchTerms = [
+    { kind: 'Name', value: 'Performance Product' },
+    { kind: 'Sku', value: 'PERF-000' },
+    { kind: 'Slug', value: 'repomax-perf-product' },
+  ];
+  const search = searchTerms[(__VU + __ITER) % searchTerms.length];
   const publicParams = {
     timeout: requestTimeout,
     tags: { name: 'GET /products' },
   };
 
   group('public catalog', () => {
-    const products = http.get(
-      `${baseUrl}/products?page=${page}&limit=20`,
-      publicParams,
+    const products = recordDuration(
+      http.get(`${baseUrl}/products?page=${page}&limit=20`, publicParams),
+      routeDuration.publicProducts,
     );
     expectOk(products, 'public products');
 
-    const categories = http.get(`${baseUrl}/categories`, {
-      timeout: requestTimeout,
-      tags: { name: 'GET /categories' },
-    });
+    const productSearch = recordDuration(
+      http.get(
+        `${baseUrl}/products?search=${encodeURIComponent(search.value)}&limit=20`,
+        {
+          timeout: requestTimeout,
+          tags: { name: 'GET /products?search' },
+        },
+      ),
+      routeDuration[`publicSearch${search.kind}`],
+    );
+    expectOk(productSearch, 'public product search');
+
+    const categories = recordDuration(
+      http.get(`${baseUrl}/categories`, {
+        timeout: requestTimeout,
+        tags: { name: 'GET /categories' },
+      }),
+      routeDuration.publicCategories,
+    );
     expectOk(categories, 'public categories');
 
     if (__ENV.PERF_PRODUCT_SLUG) {
@@ -89,19 +129,34 @@ export function runScenario(data) {
 
   if (data?.accessToken) {
     group('administration', () => {
-      const products = http.get(
-        `${baseUrl}/admin/products?page=${page}&limit=20`,
-        {
+      const products = recordDuration(
+        http.get(`${baseUrl}/admin/products?page=${page}&limit=20`, {
           ...jsonHeaders(data.accessToken),
           tags: { name: 'GET /admin/products' },
-        },
+        }),
+        routeDuration.adminProducts,
       );
       expectOk(products, 'admin products');
 
-      const categories = http.get(`${baseUrl}/admin/categories`, {
-        ...jsonHeaders(data.accessToken),
-        tags: { name: 'GET /admin/categories' },
-      });
+      const productSearch = recordDuration(
+        http.get(
+          `${baseUrl}/admin/products?search=${encodeURIComponent(search.value)}&limit=20`,
+          {
+            ...jsonHeaders(data.accessToken),
+            tags: { name: 'GET /admin/products?search' },
+          },
+        ),
+        routeDuration[`adminSearch${search.kind}`],
+      );
+      expectOk(productSearch, 'admin product search');
+
+      const categories = recordDuration(
+        http.get(`${baseUrl}/admin/categories`, {
+          ...jsonHeaders(data.accessToken),
+          tags: { name: 'GET /admin/categories' },
+        }),
+        routeDuration.adminCategories,
+      );
       expectOk(categories, 'admin categories');
     });
   }
@@ -124,8 +179,15 @@ export function summaryOutput(data) {
     '',
   ].join('\n');
 
+  const safeData = {
+    ...data,
+    setup_data: data.setup_data?.accessToken
+      ? { accessToken: '[REDACTED]' }
+      : data.setup_data,
+  };
+
   return {
-    '/results/k6-summary.json': JSON.stringify(data, null, 2),
+    '/results/k6-summary.json': JSON.stringify(safeData, null, 2),
     stdout: text,
   };
 }

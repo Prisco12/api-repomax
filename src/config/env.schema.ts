@@ -82,6 +82,7 @@ const envSchema = z
     AWS_ACCESS_KEY_ID: z.string().optional(),
     AWS_SECRET_ACCESS_KEY: z.string().optional(),
     DATABASE_URL: z.string().url(),
+    DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
   })
   .superRefine((config, context) => {
     if (config.FILE_STORAGE_DRIVER === 's3' && !config.AWS_S3_BUCKET?.trim()) {

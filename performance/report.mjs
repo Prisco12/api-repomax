@@ -4,6 +4,18 @@ import { fileURLToPath } from 'node:url';
 
 const performanceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const resultsDirectory = path.join(performanceDirectory, 'results');
+const routeDefinitions = [
+  ['route_public_products_duration', 'Produtos públicos'],
+  ['route_public_search_name_duration', 'Busca pública por nome'],
+  ['route_public_search_sku_duration', 'Busca pública por SKU'],
+  ['route_public_search_slug_duration', 'Busca pública por slug'],
+  ['route_public_categories_duration', 'Categorias públicas'],
+  ['route_admin_products_duration', 'Produtos administrativos'],
+  ['route_admin_search_name_duration', 'Busca administrativa por nome'],
+  ['route_admin_search_sku_duration', 'Busca administrativa por SKU'],
+  ['route_admin_search_slug_duration', 'Busca administrativa por slug'],
+  ['route_admin_categories_duration', 'Categorias administrativas'],
+];
 
 function number(value, fallback = 0) {
   return Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -108,9 +120,38 @@ function buildResult(summary, resources, metadata) {
       p99Ms: round(metric(summary, 'http_req_duration', 'p(99)')),
       errorRate: round(metric(summary, 'http_req_failed', 'rate') * 100),
       checksRate: round(metric(summary, 'checks', 'rate') * 100),
+      routes: routeDefinitions
+        .filter(([metricName]) => summary?.metrics?.[metricName])
+        .map(([metricName, label]) => ({
+          metricName,
+          label,
+          averageMs: round(metric(summary, metricName, 'avg')),
+          p95Ms: round(metric(summary, metricName, 'p(95)')),
+          p99Ms: round(metric(summary, metricName, 'p(99)')),
+          maximumMs: round(metric(summary, metricName, 'max')),
+        })),
     },
     resources: {
       services,
+      storage: resources.storage || {},
+      databaseActivity: resources.databaseActivity || {},
+      databaseConnections: {
+        averageTotal: round(
+          resources.summary?.databaseConnections?.averageTotal,
+        ),
+        maximumTotal: Math.round(
+          number(resources.summary?.databaseConnections?.maximumTotal),
+        ),
+        maximumActive: Math.round(
+          number(resources.summary?.databaseConnections?.maximumActive),
+        ),
+        maximumWaiting: Math.round(
+          number(resources.summary?.databaseConnections?.maximumWaiting),
+        ),
+        configuredMaximum: Math.round(
+          number(resources.summary?.databaseConnections?.configuredMaximum),
+        ),
+      },
       total: {
         normalizedCpuAveragePercent: round(
           resources.summary?.total?.normalizedCpuAveragePercent,
@@ -125,6 +166,15 @@ function buildResult(summary, resources, metadata) {
           number(resources.summary?.total?.memoryMaxBytes),
         ),
         memoryMaxPercent: round(resources.summary?.total?.memoryMaxPercent),
+        endingNormalizedCpuPercent: round(
+          resources.summary?.total?.endingNormalizedCpuPercent,
+        ),
+        memoryGrowthBytes: Math.round(
+          number(resources.summary?.total?.memoryGrowthBytes),
+        ),
+        memoryGrowthPercent: round(
+          resources.summary?.total?.memoryGrowthPercent,
+        ),
       },
     },
   };
@@ -187,8 +237,82 @@ function serviceRows(result) {
     .join('');
 }
 
+function routeRows(result) {
+  return (result.k6.routes || [])
+    .map(
+      (route) => `<tr>
+        <td><strong>${escapeHtml(route.label)}</strong></td>
+        <td>${route.averageMs} ms</td>
+        <td>${route.p95Ms} ms</td>
+        <td>${route.p99Ms} ms</td>
+        <td>${route.maximumMs} ms</td>
+      </tr>`,
+    )
+    .join('');
+}
+
+function databaseActivityRows(result) {
+  return Object.entries(result.resources.databaseActivity || {})
+    .sort(
+      ([, left], [, right]) =>
+        number(right.rowsReadSequentially) - number(left.rowsReadSequentially),
+    )
+    .map(
+      ([table, values]) => `<tr>
+        <td><strong>${escapeHtml(table)}</strong></td>
+        <td>${number(values.sequentialScans).toLocaleString('pt-BR')}</td>
+        <td>${number(values.rowsReadSequentially).toLocaleString('pt-BR')}</td>
+        <td>${number(values.indexScans).toLocaleString('pt-BR')}</td>
+        <td>${number(values.rowsFetchedByIndex).toLocaleString('pt-BR')}</td>
+      </tr>`,
+    )
+    .join('');
+}
+
+function storageRows(result) {
+  const storage = result.resources.storage || {};
+  const database = storage.database || {};
+  const volumes = storage.volumes || {};
+  const images = storage.dockerImages || {};
+  const logs = storage.logs || {};
+  const disk = storage.hostFilesystem || {};
+  const diskStatus =
+    number(disk.usedPercent) >= number(disk.criticalPercent, 85)
+      ? 'Crítico'
+      : number(disk.usedPercent) >= number(disk.warningPercent, 70)
+        ? 'Atenção'
+        : 'Saudável';
+  const observabilityVolumes = [
+    ['Prometheus', volumes.prometheus],
+    ['Grafana', volumes.grafana],
+    ['Loki', volumes.loki],
+    ['Tempo', volumes.tempo],
+  ]
+    .filter(([, bytes]) => number(bytes) > 0)
+    .map(
+      ([label, bytes]) =>
+        `<tr><th>Volume ${label}</th><td>${formatBytes(bytes)}</td><td>Dados persistidos de observabilidade</td></tr>`,
+    )
+    .join('');
+  return `<tr><th>Banco PostgreSQL</th><td>${formatBytes(database.databaseBytes)}</td><td>Banco completo</td></tr>
+    <tr><th>Tabelas PostgreSQL</th><td>${formatBytes(database.tableBytes)}</td><td>Dados das tabelas públicas</td></tr>
+    <tr><th>Índices PostgreSQL</th><td>${formatBytes(database.indexBytes)}</td><td>Estruturas usadas para acelerar consultas</td></tr>
+    <tr><th>Conexões PostgreSQL</th><td>${database.activeConnections || 0}/${database.maxConnections || 0}</td><td>Conexões abertas após o teste versus limite</td></tr>
+    <tr><th>Volume PostgreSQL</th><td>${formatBytes(volumes.postgres)}</td><td>Dados, WAL e arquivos internos</td></tr>
+    <tr><th>Volume Redis</th><td>${formatBytes(volumes.redis)}</td><td>Persistência local do Redis</td></tr>
+    <tr><th>Uploads locais</th><td>${formatBytes(volumes.api)}</td><td>Deve permanecer baixo quando produção usa S3</td></tr>
+    ${observabilityVolumes}
+    <tr><th>Frontend compilado</th><td>${formatBytes(storage.frontendBuildBytes)}</td><td>Arquivos estáticos entregues pelo Caddy</td></tr>
+    <tr><th>Imagens Docker do ambiente</th><td>${formatBytes(images.uniqueTotalBytes)}</td><td>Uma vez por imagem, sem o cache de build</td></tr>
+    <tr><th>Limite configurado de logs</th><td>${formatBytes(logs.configuredMaxTotalBytes)}</td><td>${logs.trackedContainers || 0} containers monitorados</td></tr>
+    <tr><th>Disco do computador</th><td>${round(disk.usedPercent)}% usado</td><td>${diskStatus}; alerta em ${disk.warningPercent || 70}% e crítico em ${disk.criticalPercent || 85}%</td></tr>`;
+}
+
 function individualHtml(result) {
   const profile = result.metadata.profile;
+  const connections = result.resources.databaseConnections || {};
+  const routes = routeRows(result);
+  const databaseActivity = databaseActivityRows(result);
   const body = `
     <span class="badge ${result.status}">${result.statusLabel}</span>
     <h1>RepoMax — ${escapeHtml(profile.label)}</h1>
@@ -201,17 +325,34 @@ function individualHtml(result) {
       <div class="card"><small>Erros</small><strong>${result.k6.errorRate}%</strong></div>
       <div class="card"><small>CPU alocada (pico)</small><strong>${result.resources.total.normalizedCpuMaxPercent}%</strong><div class="bar"><span style="width:${Math.min(result.resources.total.normalizedCpuMaxPercent, 100)}%"></span></div></div>
       <div class="card"><small>RAM total (pico)</small><strong>${formatBytes(result.resources.total.memoryMaxBytes)}</strong><div class="bar"><span style="width:${Math.min(result.resources.total.memoryMaxPercent, 100)}%"></span></div></div>
+      <div class="card"><small>CPU após a carga</small><strong>${result.resources.total.endingNormalizedCpuPercent}%</strong></div>
+      <div class="card"><small>Crescimento de RAM</small><strong>${result.resources.total.memoryGrowthPercent}%</strong></div>
     </section>
     <h2>Diagnóstico</h2>
     <div class="panel"><ul>${result.reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join('')}</ul></div>
     <h2>Recursos por serviço</h2>
     <div class="scroll"><table><thead><tr><th>Serviço</th><th>CPU média</th><th>CPU máxima</th><th>RAM média</th><th>RAM máxima</th></tr></thead><tbody>${serviceRows(result)}</tbody></table></div>
+    ${routes ? `<h2>Latência por endpoint</h2><div class="scroll"><table><thead><tr><th>Endpoint</th><th>Média</th><th>p95</th><th>p99</th><th>Máxima</th></tr></thead><tbody>${routes}</tbody></table></div>` : ''}
+    <h2>Conexões durante a carga</h2>
+    <div class="scroll"><table><tbody>
+      <tr><th>Média de conexões</th><td>${round(connections.averageTotal)}</td></tr>
+      <tr><th>Pico de conexões</th><td>${connections.maximumTotal || 0}</td></tr>
+      <tr><th>Pico de conexões executando</th><td>${connections.maximumActive || 0}</td></tr>
+      <tr><th>Pico esperando no PostgreSQL</th><td>${connections.maximumWaiting || 0}</td></tr>
+      <tr><th>Limite do PostgreSQL</th><td>${connections.configuredMaximum || 0}</td></tr>
+    </tbody></table></div>
+    ${databaseActivity ? `<h2>Atividade do PostgreSQL durante o teste</h2><div class="scroll"><table><thead><tr><th>Tabela</th><th>Varreduras completas</th><th>Linhas lidas em varreduras</th><th>Buscas por índice</th><th>Linhas obtidas por índice</th></tr></thead><tbody>${databaseActivity}</tbody></table></div>` : ''}
+    <h2>Armazenamento</h2>
+    <div class="scroll"><table><thead><tr><th>Componente</th><th>Uso</th><th>Observação</th></tr></thead><tbody>${storageRows(result)}</tbody></table></div>
+    <p class="muted">A medição de disco é local. Na VPS, execute o mesmo teste para medir o disco real do servidor.</p>
     <h2>Detalhes do teste</h2>
     <div class="scroll"><table><tbody>
       <tr><th>Total de requisições</th><td>${result.k6.requests}</td></tr>
       <tr><th>Tempo médio</th><td>${result.k6.averageMs} ms</td></tr>
       <tr><th>Verificações aprovadas</th><td>${result.k6.checksRate}%</td></tr>
       <tr><th>Limite do perfil</th><td>${profile.totalVcpu} vCPU / ${profile.totalMemoryGb} GB</td></tr>
+      <tr><th>Rate limit durante o teste</th><td>${result.metadata.performanceRateLimitMax ?? 'não informado'} chamadas/min por endpoint/IP</td></tr>
+      <tr><th>API saudável após o teste</th><td>${result.metadata.postTestHealthy ? 'Sim' : 'Não'}</td></tr>
     </tbody></table></div>`;
   return documentShell(`RepoMax Performance — ${profile.label}`, body);
 }
@@ -290,6 +431,7 @@ function comparisonHtml(results) {
         <td>${result.k6.errorRate}%</td>
         <td>${result.resources.total.normalizedCpuMaxPercent}%</td>
         <td>${formatBytes(result.resources.total.memoryMaxBytes)}</td>
+        <td>${formatBytes(result.resources.storage?.database?.databaseBytes)}</td>
         <td><span class="badge ${result.status}">${result.statusLabel}</span></td>
       </tr>`,
     )
@@ -311,7 +453,7 @@ function comparisonHtml(results) {
     <p class="subtitle">Resultados locais com limites de recursos simulados.</p>
     <h2>Recomendação</h2><div class="panel">${recommendation}</div>
     <h2>Todos os resultados</h2>
-    <div class="scroll"><table><thead><tr><th>Perfil</th><th>Cenário</th><th>Usuários</th><th>Req/s</th><th>Média</th><th>p95</th><th>p99</th><th>Erros</th><th>CPU pico</th><th>RAM pico</th><th>Avaliação</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="scroll"><table><thead><tr><th>Perfil</th><th>Cenário</th><th>Usuários</th><th>Req/s</th><th>Média</th><th>p95</th><th>p99</th><th>Erros</th><th>CPU pico</th><th>RAM pico</th><th>Banco</th><th>Avaliação</th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="muted">Critérios: p95 &lt; 500 ms, erros &lt; 1%, verificações ≥ 99%, CPU abaixo de 70% e RAM abaixo de 80% para classificação saudável.</p>`,
   );
 }

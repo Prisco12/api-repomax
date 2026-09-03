@@ -1,14 +1,43 @@
 # Simulates the application share of a medium VPS (4 vCPU / 8 GB).
 # The remaining resources are reserved for the operating system and Docker.
 services:
+  web:
+    cpus: 0.1
+    mem_limit: 128m
+
   api:
-    cpus: 2
-    mem_limit: 2g
+    cpus: 1.8
+    mem_limit: 1536m
+    environment:
+      # Capacity tests must reach the application instead of being stopped by
+      # the per-IP protection. The regular Compose configuration is unchanged.
+      RATE_LIMIT_MAX: ${PERF_RATE_LIMIT_MAX:-1000000}
+      DATABASE_POOL_MAX: ${PERF_DATABASE_POOL_MAX:-15}
 
   postgres:
-    cpus: 1.5
-    mem_limit: 4g
+    cpus: 1.4
+    mem_limit: 3584m
 
   redis:
-    cpus: 0.25
-    mem_limit: 512m
+    cpus: 0.2
+    mem_limit: 384m
+
+  prometheus:
+    cpus: 0.12
+    mem_limit: 320m
+
+  grafana:
+    cpus: 0.1
+    mem_limit: 320m
+
+  loki:
+    cpus: 0.1
+    mem_limit: 256m
+
+  tempo:
+    cpus: 0.1
+    mem_limit: 256m
+
+  alloy:
+    cpus: 0.08
+    mem_limit: 128m

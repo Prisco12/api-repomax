@@ -13,6 +13,7 @@ describe('environment schema', () => {
       AUDIT_RETENTION_DAYS: 365,
       AUDIT_CLEANUP_BATCH_SIZE: 1_000,
       AUDIT_CLEANUP_MAX_BATCHES: 100,
+      DATABASE_POOL_MAX: 10,
     });
   });
 

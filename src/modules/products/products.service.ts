@@ -18,7 +18,7 @@ import { ListProductsDto } from './dto/list-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CategoriesService } from '../categories/categories.service';
 
-const productInclude = {
+const productDetailInclude = {
   categories: {
     include: {
       category: {
@@ -37,8 +37,17 @@ const productInclude = {
   },
 } satisfies Prisma.ProductInclude;
 
+const productListInclude = {
+  categories: productDetailInclude.categories,
+  images: {
+    where: { isPrimary: true },
+    take: 1,
+    orderBy: [{ sortOrder: 'asc' }],
+  },
+} satisfies Prisma.ProductInclude;
+
 type ProductWithRelations = Prisma.ProductGetPayload<{
-  include: typeof productInclude;
+  include: typeof productDetailInclude;
 }>;
 
 @Injectable()
@@ -67,7 +76,7 @@ export class ProductsService {
         where,
         skip: (filters.page - 1) * filters.limit,
         take: filters.limit,
-        include: productInclude,
+        include: productListInclude,
         orderBy: [
           { isFeatured: 'desc' },
           { sortOrder: 'asc' },
@@ -87,7 +96,7 @@ export class ProductsService {
   async findPublicBySlug(slug: string) {
     const product = await this.prisma.product.findFirst({
       where: { slug, status: ProductStatus.PUBLISHED },
-      include: productInclude,
+      include: productDetailInclude,
     });
     if (!product) throw new NotFoundException('Product not found');
     return this.toPublicProduct(product);
@@ -110,7 +119,7 @@ export class ProductsService {
         where,
         skip: (filters.page - 1) * filters.limit,
         take: filters.limit,
-        include: productInclude,
+        include: productListInclude,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.product.count({ where }),
@@ -140,7 +149,7 @@ export class ProductsService {
         where,
         skip: (filters.page - 1) * filters.limit,
         take: filters.limit,
-        include: { product: { include: productInclude } },
+        include: { product: { include: productListInclude } },
         orderBy: [{ sortOrder: 'asc' }, { product: { name: 'asc' } }],
       }),
       this.prisma.productCategory.count({ where }),
@@ -169,7 +178,7 @@ export class ProductsService {
         where,
         skip: (filters.page - 1) * filters.limit,
         take: filters.limit,
-        include: { product: { include: productInclude } },
+        include: { product: { include: productListInclude } },
         orderBy: [{ sortOrder: 'asc' }, { product: { name: 'asc' } }],
       }),
       this.prisma.productCategory.count({ where }),
@@ -185,7 +194,7 @@ export class ProductsService {
   async findAdminById(id: string) {
     const product = await this.prisma.product.findUnique({
       where: { id },
-      include: productInclude,
+      include: productDetailInclude,
     });
     if (!product) throw new NotFoundException('Product not found');
     return this.toAdminProduct(product);
@@ -219,7 +228,7 @@ export class ProductsService {
             })),
           },
         },
-        include: productInclude,
+        include: productDetailInclude,
       });
       const result = this.toAdminProduct(product);
       await this.audit.record({
@@ -294,7 +303,7 @@ export class ProductsService {
         }
         return transaction.product.findUniqueOrThrow({
           where: { id },
-          include: productInclude,
+          include: productDetailInclude,
         });
       });
       const result = this.toAdminProduct(product);
@@ -329,7 +338,7 @@ export class ProductsService {
           : {}),
         ...(status === ProductStatus.ARCHIVED ? { isFeatured: false } : {}),
       },
-      include: productInclude,
+      include: productDetailInclude,
     });
     const result = this.toAdminProduct(product);
     await this.audit.record({
@@ -349,7 +358,7 @@ export class ProductsService {
     const product = await this.prisma.product.update({
       where: { id },
       data: { status: ProductStatus.ARCHIVED, isFeatured: false },
-      include: productInclude,
+      include: productDetailInclude,
     });
     const result = this.toAdminProduct(product);
     await this.audit.record({
@@ -367,7 +376,7 @@ export class ProductsService {
   private async findProductOrThrow(id: string): Promise<ProductWithRelations> {
     const product = await this.prisma.product.findUnique({
       where: { id },
-      include: productInclude,
+      include: productDetailInclude,
     });
     if (!product) throw new NotFoundException('Product not found');
     return product;
