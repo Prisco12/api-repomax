@@ -58,8 +58,9 @@ export class CategoriesService {
   }
 
   async findPublicBySlug(slug: string) {
-    const category = await this.prisma.category.findFirst({
-      where: { slug, isActive: true },
+    const visibleCategory = await this.findVisibleCategoryBySlug(slug);
+    const category = await this.prisma.category.findUnique({
+      where: { id: visibleCategory.id },
       select: {
         ...categorySelect,
         children: {
@@ -164,8 +165,10 @@ export class CategoriesService {
   async update(id: string, dto: UpdateCategoryDto, actorId: string) {
     const before = await this.findAdminById(id);
     if (dto.parentId !== undefined) await this.validateParent(dto.parentId, id);
-    if (dto.isActive === false && before.isActive)
+    if (dto.isActive === false && before.isActive) {
+      await this.ensureNoActiveDescendants(id);
       await this.productsService.ensureCategoryCanBeDeactivated(id);
+    }
     const data = {
       ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
       ...(dto.slug !== undefined ? { slug: this.slugOrThrow(dto.slug) } : {}),
@@ -199,8 +202,10 @@ export class CategoriesService {
 
   async setStatus(id: string, isActive: boolean, actorId: string) {
     const before = await this.findAdminById(id);
-    if (!isActive && before.isActive)
+    if (!isActive && before.isActive) {
+      await this.ensureNoActiveDescendants(id);
       await this.productsService.ensureCategoryCanBeDeactivated(id);
+    }
     const category = await this.prisma.category.update({
       where: { id },
       data: { isActive },
@@ -279,6 +284,43 @@ export class CategoriesService {
       throw new BadRequestException(
         'Published product must have at least one active category',
       );
+  }
+
+  private async ensureNoActiveDescendants(id: string) {
+    let parentIds = [id];
+    for (let depth = 0; parentIds.length && depth < 100; depth += 1) {
+      const children = await this.prisma.category.findMany({
+        where: { parentId: { in: parentIds } },
+        select: { id: true, isActive: true },
+      });
+      if (children.some((category) => category.isActive))
+        throw new ConflictException(
+          'Category has active descendants and cannot be deactivated',
+        );
+      parentIds = children.map((category) => category.id);
+    }
+    if (parentIds.length)
+      throw new BadRequestException('Category hierarchy is too deep');
+  }
+
+  private async findVisibleCategoryBySlug(slug: string) {
+    let category = await this.prisma.category.findUnique({
+      where: { slug },
+      select: { id: true, parentId: true, isActive: true },
+    });
+    if (!category?.isActive) throw new NotFoundException('Category not found');
+    const visibleCategory = category;
+    for (let depth = 0; category.parentId && depth < 100; depth += 1) {
+      category = await this.prisma.category.findUnique({
+        where: { id: category.parentId },
+        select: { id: true, parentId: true, isActive: true },
+      });
+      if (!category?.isActive)
+        throw new NotFoundException('Category not found');
+    }
+    if (category.parentId)
+      throw new BadRequestException('Category hierarchy is too deep');
+    return visibleCategory;
   }
 
   private slugOrThrow(value: string) {

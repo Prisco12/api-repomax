@@ -6,6 +6,7 @@ describe('CategoriesService', () => {
     category: {
       create: jest.fn(),
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
     },
@@ -62,6 +63,7 @@ describe('CategoriesService', () => {
       children: [],
       _count: { products: 1 },
     });
+    prisma.category.findMany.mockResolvedValue([]);
     products.ensureCategoryCanBeDeactivated.mockRejectedValueOnce(
       new ConflictException(),
     );
@@ -72,6 +74,24 @@ describe('CategoriesService', () => {
     expect(products.ensureCategoryCanBeDeactivated).toHaveBeenCalledWith(
       'category-id',
     );
+    expect(prisma.category.update).not.toHaveBeenCalled();
+  });
+
+  it('does not deactivate a category with active descendants', async () => {
+    prisma.category.findUnique.mockResolvedValue({
+      id: 'category-id',
+      isActive: true,
+      children: [],
+      _count: { products: 0 },
+    });
+    prisma.category.findMany.mockResolvedValue([
+      { id: 'child-id', isActive: true },
+    ]);
+
+    await expect(
+      service.setStatus('category-id', false, 'actor-id'),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(products.ensureCategoryCanBeDeactivated).not.toHaveBeenCalled();
     expect(prisma.category.update).not.toHaveBeenCalled();
   });
 });
